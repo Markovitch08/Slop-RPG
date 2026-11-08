@@ -3,7 +3,7 @@
 // - Serves ../index.html, maps the three.js CDN to the local node_modules copy.
 // Real time vs game time: step() is deterministic game time, not wall clock.
 // - Clicks "Play on desktop", runs the game, then runs each scenario file.
-//   A scenario file is `module.exports = async ({page, HM, step, log, assert}) => {...}`
+//   A scenario file is `module.exports = async ({page, HM, step, log, assert, shot}) => {...}`
 //   where HM(expr) evaluates `expr` in the page with `HM` (window.HM) in scope,
 //   and step(seconds) waits that long of real game time.
 // - Fails (exit 1) on any uncaught page error, console.error, or failed assert.
@@ -14,9 +14,9 @@ const fs = require('fs');
 
 const args = process.argv.slice(2);
 const scenarios = [];
-let shot = null, secs = 6;
+let shotName = null, secs = 6;
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--shot') shot = args[++i];
+  if (args[i] === '--shot') shotName = args[++i];
   else if (args[i] === '--secs') secs = +args[++i];
   else scenarios.push(path.resolve(args[i]));
 }
@@ -47,6 +47,7 @@ fs.mkdirSync(OUT, { recursive: true });
       }
       return route.fulfill({ status: 404, body: '' });
     }
+    if (/fonts\.(googleapis|gstatic)\.com/.test(url)) return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
     return route.abort();
   });
   let failed = false;
@@ -59,6 +60,12 @@ fs.mkdirSync(OUT, { recursive: true });
     for (let i = 0; i < n; i++) HM.frame();
     HM.noRender = false; HM.fixedDt = 0; HM.frame(); HM.renderer.setAnimationLoop(HM.frame);
   }, Math.round(s * 30));
+  // shot(name): pause the render loop, render one frame, screenshot to .dev/out/<name>.png, resume.
+  const shot = async (name) => {
+    await page.evaluate(() => { const HM = window.HM; HM.renderer.setAnimationLoop(null); HM.fixedDt = 1e-4; HM.frame(); HM.fixedDt = 0; });
+    await page.screenshot({ path: path.join(OUT, name + '.png'), timeout: 120000 });
+    await page.evaluate(() => window.HM.renderer.setAnimationLoop(window.HM.frame));
+  };
   try {
     await page.goto('http://hm.local/index.html');
     await page.waitForFunction(() => window.HM && document.querySelector('#status') && /ready/i.test(document.querySelector('#status').textContent), null, { timeout: 60000 });
@@ -69,9 +76,9 @@ fs.mkdirSync(OUT, { recursive: true });
     log('mode:', await HM('HM.state.mode'));
     for (const s of scenarios) {
       console.log('scenario', path.basename(s));
-      await require(s)({ page, HM, step, log, assert });
+      await require(s)({ page, HM, step, log, assert, shot });
     }
-    if (shot) await page.screenshot({ path: path.join(OUT, shot + '.png') });
+    if (shotName) await shot(shotName);
   } catch (e) {
     failed = true; console.log('  EXCEPTION:', e.message);
   }
