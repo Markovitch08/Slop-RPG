@@ -259,21 +259,44 @@ const BIOMES={
   trees:{dead:110},rocks:200,grass:0,crystals:160,bones:140,particles:'embers',amb:'amb_wind',scale:'phrygian',root:48,bpm:68,prog:[0,1,6,0],lead:'sawtooth',windF:260,mtn:['#4c1210','#3a0c0a','#1e0606'],near:'spires',cloudN:16}
 };
 const BIOME_BY_NAME={'dawn meadow':'meadow','deep forest day':'forest','swamp dusk':'swamp','snowy pass night with aurora':'snow','ruined castle thunderstorm':'castle','red eclipse wasteland':'waste'};
+/* ---------- world map: 3x3 regions joined by gated roads (row 0 = north) ---------- */
+const REGIONS=[
+ {id:'1,2',col:1,row:2,name:'The Lantern Yard',biome:'meadow',seed:0,tier:0,chapter:0,hub:true,desc:'The Lantern Yard. Lamps that never go out, and a fire that keeps the dark at the gates.',tips:['Roads leave the yard through stone gates. Walk through one to travel.','The training dummy never tires. Swing fast; speed is what cuts.','Weapons left on the rack wait for you here.']},
+ {id:'0,2',col:0,row:2,name:'Thornfield',biome:'meadow',seed:5,tier:1,chapter:0,desc:'Thornfield. Old farmland gone to briar. The hedges hide more than hares.',tips:['Thornfield was the yard\'s orchard, before the Hollow King.','Signposts at every gate name the land beyond and its danger.']},
+ {id:'2,2',col:2,row:2,name:'Edgewood',biome:'forest',seed:3,tier:1,chapter:1,desc:'Edgewood. The first trees past the yard, and the first camps of those who serve the crown.',tips:['Bandits camp under the oldest oaks of Edgewood.','Archers keep their distance. Close it fast, or raise a shield.']},
+ {id:'0,1',col:0,row:1,name:'Black Water Fen',biome:'swamp',seed:4,tier:2,chapter:2,desc:'Black Water Fen. The water is shallow, the mud is not. Keep to the causeways.',tips:['Fen lights drift over the deep water. Do not follow them.','Skeletons rise slowly from the mud. Strike before they stand.']},
+ {id:'1,1',col:1,row:1,name:'Whisperwood',biome:'forest',seed:9,tier:2,chapter:0,desc:'Whisperwood. The leaves talk when there is no wind. Nobody likes what they say.',tips:['Whisperwood sits at the heart of the realm. Every road crosses it.','The trees of Whisperwood remember the old kings.']},
+ {id:'2,1',col:2,row:1,name:'Frostfang Pass',biome:'snow',seed:2,tier:3,chapter:3,desc:'Frostfang Pass. The road north climbs into the ice. Beyond it waits the throne.',tips:['The northern gate of Frostfang is sealed by the Hollow King\'s ice.','Knights hide behind their shields. Go around, or break it.']},
+ {id:'0,0',col:0,row:0,name:'Ashgrave Keep',biome:'castle',seed:6,tier:4,chapter:4,desc:'Ashgrave Keep. The walls fell long ago. The garrison did not notice.',tips:['Lightning finds every enemy near the first one.','Ashgrave was the last keep to kneel to the crown.']},
+ {id:'1,0',col:1,row:0,name:'The Cinder Vale',biome:'waste',seed:7,tier:4,chapter:5,desc:'The Cinder Vale. The sky burns red here, and the ground remembers fire.',tips:['Brutes swing slowly and hit like falling stone. Step back, then strike.','Embers of the Vale never cool.']},
+ {id:'2,0',col:2,row:0,name:'The Hollow Throne',biome:'snow',seed:8,tier:5,chapter:6,final:true,desc:'The Hollow Throne. The crown is near. So is its king.',tips:['The Hollow King waits on a throne of ice.','Everything you have learned is needed here.']}];
+const REGION_AT={};for(const R of REGIONS)REGION_AT[R.id]=R;
+const HUB_ID='1,2';
+const DIRS={N:[0,-1],S:[0,1],E:[1,0],W:[-1,0]},OPP_DIR={N:'S',S:'N',E:'W',W:'E'};
+function neighbour(R,dir){const d=DIRS[dir];return REGION_AT[(R.col+d[0])+','+(R.row+d[1])]||null;}
+function regionSealed(R){return !!R.final&&SAVE.done<5;}
+const regionState={};for(const R of REGIONS)regionState[R.id]={visited:false};
 const QUALITY={high:1,medium:.62,low:.36};
 let B=BIOMES.meadow,world=null,colliders=[],QF=1;
-const W={size:230,seg:190,grid:null,dynamic:[]};
+const W={size:230,seg:190,grid:null,dynamic:[],roads:[],gates:[],region:null};
+
+/* ---------- roads: one per open side, centre -> gate at GATE_R, straight beyond ---------- */
+const GATE_R=42,ROAD_W=1.9,PLAY_R=46;
+function roadOff(rd,t){const u=t/GATE_R;return u>=1||u<=0?0:Math.sin(Math.PI*u)*rd.amp*Math.sin(u*TAU+rd.ph);}
+function roadPt(rd,t,out){const o=roadOff(rd,t);return out.set(rd.dx*t-rd.dz*o,0,rd.dz*t+rd.dx*o);}
+const RDP={x:0,z:0},_rdv=new V3();/* nearest road centre point from the last roadD call */
+function roadD(x,z){let best=1e9;for(const rd of W.roads){const t=x*rd.dx+z*rd.dz;const d=t<=0?Math.hypot(x,z):Math.abs(-x*rd.dz+z*rd.dx-roadOff(rd,t));if(d<best){best=d;if(t<=0){RDP.x=0;RDP.z=0;}else{roadPt(rd,t,_rdv);RDP.x=_rdv.x;RDP.z=_rdv.z;}}}return best;}
+function setupRoads(R){W.roads=[];['N','E','S','W'].forEach((dir,i)=>{if(!neighbour(R,dir))return;const d=DIRS[dir];W.roads.push({dir,dx:d[0],dz:d[1],amp:1.6+.8*hash2(i,R.col*7+R.row),ph:(R.seed+i)*1.7+R.col});});}
 
 /* ---------- terrain ---------- */
-function pathX(z){return Math.sin(z*.045)*7+Math.sin(z*.11)*2;}
+function terrainBase(x,z,r){const centerFlat=r<20?.35+.65*smooth(r/20):1;return ((fbm(x*.03+100,z*.03+100,4)-.5)*B.relief*2+(vnoise(x*.3,z*.3)-.5)*.3)*centerFlat;}
 function terrainH(x,z){
- const r=Math.hypot(x,z);
- const base=(fbm(x*.03+100,z*.03+100,4)-.5)*B.relief*2;
- const small=(vnoise(x*.3,z*.3)-.5)*.3;
- const rim=smooth(clamp((r-22)/40,0,1))*B.rim*(.55+.9*fbm(x*.018+7,z*.018+7,3));
- const centerFlat=r<20?.35+.65*smooth(r/20):1;
- let h=base*centerFlat+small*centerFlat+rim;
- if(B.water){const p=fbm(x*.06+40,z*.06+40,3);if(r>7)h-=smooth(clamp((p-.5)/.15,0,1))*1.3*clamp((r-7)/6,0,1);}
- const pd=Math.abs(x-pathX(z));if(pd<2.2&&!B.water)h-=.12*(1-pd/2.2);
+ const r=Math.hypot(x,z),rdist=roadD(x,z);
+ const rim=smooth(clamp((r-44)/24,0,1))*B.rim*(.55+.9*fbm(x*.018+7,z*.018+7,3))*smooth(clamp((rdist-4)/12,0,1));
+ let h=terrainBase(x,z,r)+rim;
+ const flat=1-smooth(clamp((rdist-ROAD_W)/2.6,0,1));
+ if(B.water){const p=fbm(x*.06+40,z*.06+40,3);if(r>7)h-=smooth(clamp((p-.5)/.15,0,1))*1.3*clamp((r-7)/6,0,1)*(1-flat);}
+ if(flat>0){const px=RDP.x,pz=RDP.z;h=lerp(h,terrainBase(px,pz,Math.hypot(px,pz))-.08,flat);if(B.water!==undefined)h=lerp(h,Math.max(h,B.water+.12),flat);}
  return h;}
 function groundY(x,z){
  const g=W.grid;if(!g)return 0;const n=W.seg,cs=W.size/n,fx=(x+W.size/2)/cs,fz=(z+W.size/2)/cs;
@@ -291,7 +314,7 @@ function buildTerrain(group){
   _v1.set(b[0]-a[0],b[1]-a[1],b[2]-a[2]);_v2.set(c[0]-a[0],c[1]-a[1],c[2]-a[2]);_v3.crossVectors(_v2,_v1).normalize();if(_v3.y<0)_v3.negate();
   const slope=_v3.y,r=Math.hypot(cx,cz),nn=fbm(cx*.08,cz*.08,2);
   tmp.copy(gc[0]).lerp(gc[1],clamp(nn*1.6-.3,0,1)).lerp(gc[2],clamp(vnoise(cx*.5,cz*.5)-.4,0,1));
-  if(!B.snow&&!B.water&&Math.abs(cx-pathX(cz))<1.9&&r<60)tmp.copy(dirt).lerp(gc[0],clamp((Math.abs(cx-pathX(cz))-1.2)/.8,0,1));
+  const rdc=roadD(cx,cz);if(rdc<ROAD_W&&r<70&&!(B.water!==undefined&&cy<B.water+.05))tmp.copy(dirt).lerp(gc[0],clamp((rdc-1.2)/.7,0,1));
   if(B.water&&cy<B.water+.15)tmp.copy(dirt).multiplyScalar(.8);
   if(B.ruins&&r<15){const tx=Math.floor((cx+50)/1.6),tz=Math.floor((cz+50)/1.6);if(vnoise(cx*.4,cz*.4)>.3)tmp.copy((tx+tz)%2?flag:flag2);}
   if(slope<.78)tmp.copy(rock).lerp(gc[0],clamp((slope-.6)/.18,0,1));
@@ -339,10 +362,10 @@ function scatter(geo,n,o={}){
  const im=new THREE.InstancedMesh(geo,o.mat||MAT,n),m=new M4(),q=new QT(),s=new V3(),p=new V3(),c=new COL();let k=0;
  for(let t=0;k<n&&t<n*10;t++){const a=rnd()*TAU,r=Math.sqrt(srr(o.r0*o.r0,o.r1*o.r1)),x=Math.cos(a)*r,z=Math.sin(a)*r;
   if(o.avoid&&o.avoid(x,z))continue;const gy=groundY(x,z);if(B.water!==undefined&&!o.inWater&&gy<B.water+.05)continue;if(o.inWater&&(gy>B.water+.1||gy<B.water-.6))continue;
-  if(!o.onPath&&!B.water&&Math.abs(x-pathX(z))<1.6&&r<60)continue;
+  if(!o.onPath&&roadD(x,z)<(o.collide?3.2:1.6))continue;
   const sc=srr(o.s0||.8,o.s1||1.3);p.set(x,(o.inWater?B.water:gy)+(o.y||0)*sc,z);q.setFromEuler(_e.set(srr(-1,1)*(o.tilt||0),rnd()*TAU,srr(-1,1)*(o.tilt||0)));s.set(sc,sc*srr(.85,1.15),sc);m.compose(p,q,s);im.setMatrixAt(k,m);
   if(o.colors){c.set(o.colors[Math.floor(rnd()*o.colors.length)]).multiplyScalar(srr(.85,1.15));im.setColorAt(k,c);}
-  if(o.collide&&r<34)colliders.push({x,z,r:o.collide*sc});k++;}
+  if(o.collide&&r<50)colliders.push({x,z,r:o.collide*sc});k++;}
  im.count=k;im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;im.computeBoundingSphere();return im;}
 
 /* ---------- 2D backdrop: mountain/treeline rings + cloud billboards ---------- */
@@ -355,15 +378,16 @@ function ridgeTex(color,top,kind,seedv){
   else{for(let x=0;x<=w;x+=6){const base=h*(.55+.25*pts[Math.floor(x/w*(N-1))]);const tall=kind==='pines'?R()*90+40:kind==='spires'?(R()<.08?R()*220:R()*30):R()*50+20;
    if(kind==='pines'){g.lineTo(x,base);g.lineTo(x+3,base-tall);g.lineTo(x+6,base);}else if(kind==='spires'){g.lineTo(x,base);g.lineTo(x+2,base-tall);g.lineTo(x+6,base);}else if(kind==='dead'){g.lineTo(x,base);g.lineTo(x+1,base-tall);g.lineTo(x+2,base-tall*.6);g.lineTo(x+4,base-tall*.9);g.lineTo(x+6,base);}else{g.lineTo(x,base-tall*.5);g.quadraticCurveTo(x+3,base-tall,x+6,base-tall*.5);}}}
   g.lineTo(w,h);g.closePath();g.fill();});}
-function cloudTex(){return canvasTex(256,128,(g,w,h)=>{for(let i=0;i<18;i++){const x=rr(40,216),y=rr(50,90),r=rr(18,42);const gr=g.createRadialGradient(x,y-r*.3,0,x,y,r);gr.addColorStop(0,'rgba(255,255,255,.95)');gr.addColorStop(.6,'rgba(235,235,240,.6)');gr.addColorStop(1,'rgba(200,200,215,0)');g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,TAU);g.fill();}});}
+function cloudTex(){return canvasTex(256,128,(g,w,h)=>{for(let i=0;i<22;i++){const t=rr(-1,1),x=128+t*78,r=rr(16,34)*(1-.45*Math.abs(t)),y=rr(64,80)-r*.25;const gr=g.createRadialGradient(x,y-r*.3,0,x,y,r);gr.addColorStop(0,'rgba(255,255,255,.95)');gr.addColorStop(.6,'rgba(235,235,240,.6)');gr.addColorStop(1,'rgba(200,200,215,0)');g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,TAU);g.fill();}
+ g.globalCompositeOperation='destination-in';g.save();g.translate(w/2,h/2);g.scale(1,h/w);const mk=g.createRadialGradient(0,0,0,0,0,w/2);mk.addColorStop(0,'rgba(0,0,0,1)');mk.addColorStop(.62,'rgba(0,0,0,.9)');mk.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=mk;g.fillRect(-w/2,-w/2,w,w);g.restore();g.globalCompositeOperation='source-over';});}
 let cloudGroup=null;
 function buildBackdrop(group){
- const fogC=new COL(B.fog[0]);const mix=(c,t)=>'#'+new COL(c).lerp(fogC,t).getHexString();
+ W.ridges=[];const fogC=new COL(B.fog[0]);const mix=(c,t)=>'#'+new COL(c).lerp(fogC,t).getHexString();
  const layers=[[420,150,B.mtn[0],'mtn',.55,-40],[300,90,B.mtn[1],'mtn',.35,-22],[175,40,B.mtn[2],B.near,.15,-6]];
- layers.forEach(([rad,hgt,c,kind,fogT,y],i)=>{const tex=ridgeTex(mix(c,fogT),mix(c,Math.min(1,fogT+.25)),kind,1000+i*77+B.seed);tex.wrapS=THREE.RepeatWrapping;tex.repeat.x=kind==='mtn'?2:5;
-  const m=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,hgt,72,1,true),new THREE.MeshBasicMaterial({map:tex,side:THREE.BackSide,alphaTest:.5,transparent:false,fog:false}));m.position.y=y+hgt/2;m.rotation.y=i*1.3;m.renderOrder=-1;group.add(m);});
- cloudGroup=new THREE.Group();const ct=cloudTex(),cc=new COL(B.sky.cloudCol);
- for(let i=0;i<B.cloudN;i++){const sm=new THREE.SpriteMaterial({map:ct,color:cc.clone().multiplyScalar(rr(.75,1.05)),fog:false,transparent:true,depthWrite:false,opacity:rr(.55,.9)});const s=new THREE.Sprite(sm);const a=rr(0,TAU),r=rr(160,360);s.position.set(Math.cos(a)*r,rr(55,130),Math.sin(a)*r);s.scale.set(rr(70,140),rr(25,45),1);s.renderOrder=-1;cloudGroup.add(s);}
+ layers.forEach(([rad,hgt,c,kind,fogT,y],i)=>{const tex=ridgeTex(mix(c,fogT),mix(c,Math.min(1,fogT+.25)),kind,1000+i*77+B.seed+(W.region?W.region.seed*131:0));tex.wrapS=THREE.RepeatWrapping;tex.repeat.x=kind==='mtn'?2:5;
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,hgt,72,1,true),new THREE.MeshBasicMaterial({map:tex,side:THREE.BackSide,alphaTest:.5,transparent:false,fog:false}));m.position.y=y+hgt/2;m.rotation.y=i*1.3;m.renderOrder=-1;m.userData.follow=[1,.95,.85][i];W.ridges.push(m);group.add(m);});
+ cloudGroup=new THREE.Group();const ct=cloudTex(),cc=new COL(B.sky.cloudCol);cloudGroup.userData.hor=new COL(B.sky.hor);
+ for(let i=0;i<B.cloudN;i++){const sm=new THREE.SpriteMaterial({map:ct,color:cc.clone().multiplyScalar(rr(.75,1.05)),fog:false,transparent:true,depthWrite:false,opacity:rr(.55,.9)});const s=new THREE.Sprite(sm);const a=rr(0,TAU),r=rr(160,360);s.position.set(Math.cos(a)*r,rr(55,130),Math.sin(a)*r);s.scale.set(rr(70,140),rr(25,45),1);s.renderOrder=-1;s.userData.col=sm.color.clone();s.userData.op=sm.opacity;cloudGroup.add(s);}
  group.add(cloudGroup);}
 
 /* ---------- sky: shader baked into a cubemap per biome ---------- */
@@ -422,7 +446,13 @@ function updateWeather(dt,t){
  if(k==='fireflies')WX.pts.material.opacity=.6+.4*Math.sin(t*3);
  if(B.storm){WX.nextFlash-=dt;if(WX.nextFlash<=0){WX.flash=1;WX.nextFlash=rr(6,16);const d=rr(.4,2);setTimeout(()=>sfx('thunder',null,.9),d*1000);}
   WX.flash=Math.max(0,WX.flash-dt*2.5);const f=WX.flash>0?(Math.random()<.5?WX.flash:WX.flash*.3):0;hemi.intensity=B.hemi[2]+f*3;scene.backgroundIntensity=1+f*4;}
- if(cloudGroup)cloudGroup.rotation.y+=dt*.004;}
+ updateBackdrop(dt,cx,cz);}
+const CLOUD_WIND=new V3(1.6,0,.7);
+function updateBackdrop(dt,cx,cz){
+ for(const m of W.ridges){m.position.x=cx*m.userData.follow;m.position.z=cz*m.userData.follow;}
+ if(!cloudGroup)return;cloudGroup.position.set(cx,0,cz);const hor=cloudGroup.userData.hor;
+ for(const s of cloudGroup.children){const p=s.position;p.addScaledVector(CLOUD_WIND,dt);const r=Math.hypot(p.x,p.z);if(r>380){p.x*=-376/r;p.z*=-376/r;}
+  const el=Math.atan2(p.y,Math.max(1,Math.hypot(p.x,p.z))),k=smooth(clamp((el-.1)/.22,0,1))*smooth(clamp((385-Math.hypot(p.x,p.z))/45,0,1));s.material.opacity=s.userData.op*k;s.material.color.copy(s.userData.col).lerp(hor,(1-k)*.6);}}
 
 /* ---------- hub & arena set dressing (individual meshes, merged) ---------- */
 function house(w,d,h,wall,roof){const a=[G(new THREE.BoxGeometry(w,h,d),wall,{p:[0,h/2,0]}),G(new THREE.BoxGeometry(w+.1,.25,d+.1),'#4a3a2a',{p:[0,.12,0]})];
@@ -447,47 +477,69 @@ function tower(){return merge([G(new THREE.CylinderGeometry(2.2,2.5,9,12,6),'#5e
 function dressArena(group,ch){
  const k=B.key,add=(g,x,z,ry=0,mat=MAT,s=1)=>{const m=new THREE.Mesh(g,mat);m.position.set(x,groundY(x,z),z);m.rotation.y=ry;m.scale.setScalar(s);group.add(m);return m;};
  if(ch==='hub'){
-  const H=[[ -14,-4,.6,'#c8b89a','#7a3a2a'],[-12,9,2.3,'#d4c4a4','#5a4a3a'],[13,-6,-.5,'#bcac8e','#6a3a2a'],[15,7,-2.2,'#ccbc9c','#4a4a5a'],[-3,-17,0,'#d0c0a0','#6a4a2a'],[5,16,3.1,'#c4b494','#7a3a2a']];
+  const H=[[-14,-8.5,.6,'#c8b89a','#7a3a2a'],[-12,9,2.3,'#d4c4a4','#5a4a3a'],[13.5,-8.5,-.5,'#bcac8e','#6a3a2a'],[15,7,-2.2,'#ccbc9c','#4a4a5a'],[-8,-19,0,'#d0c0a0','#6a4a2a'],[5,16,3.1,'#c4b494','#7a3a2a']];
   H.forEach(([x,z,ry,w,r])=>{add(house(5,4,2.6,w,r),x,z,ry+Math.atan2(-x,-z)-ry);colliders.push({x,z,r:3.1});});
   const L=lantern();const posts=new THREE.InstancedMesh(L.post,MAT,10),glows=new THREE.InstancedMesh(L.glow,MAT_GLOW,10),m=new M4();
   for(let i=0;i<10;i++){const a=i/10*TAU+.3,r=9.5;let x=Math.cos(a)*r,z=Math.sin(a)*r;if(Math.abs(x)<3.5&&z<0)x+=x<0?-3:3;m.compose(new V3(x,groundY(x,z),z),new QT().setFromAxisAngle(UP,-a+Math.PI),new V3(1,1,1));posts.setMatrixAt(i,m);glows.setMatrixAt(i,m);}
   group.add(posts,glows);addFire(group,0,0);
-  const arch=merge([G(new THREE.BoxGeometry(.9,4.4,.9),'#6c6a74',{p:[-2,2.2,0],warp:.05}),G(new THREE.BoxGeometry(.9,4.4,.9),'#6c6a74',{p:[2,2.2,0],warp:.05}),G(new THREE.BoxGeometry(5.4,.9,1.1),'#5e5c66',{p:[0,4.7,0],warp:.06}),
-   ...Array.from({length:6},(_,i)=>G(new THREE.BoxGeometry(.3,.5,.1),'#7cc8ff',{p:[-2,.8+i*.6,.46]})),...Array.from({length:6},(_,i)=>G(new THREE.BoxGeometry(.3,.5,.1),'#7cc8ff',{p:[2,.8+i*.6,.46]}))]);
-  const am=add(arch,0,-12);colliders.push({x:-2,z:-12,r:.7},{x:2,z:-12,r:.7});
-  const pg=new THREE.Mesh(new THREE.PlaneGeometry(3.1,3.8),new THREE.MeshBasicMaterial({map:canvasTex(128,256,(g,w,h)=>{const gr=g.createLinearGradient(0,h,0,0);gr.addColorStop(0,'#2a6aff');gr.addColorStop(.5,'#8ad0ff');gr.addColorStop(1,'#e8f6ff');g.fillStyle=gr;g.fillRect(0,0,w,h);for(let i=0;i<40;i++){g.fillStyle=`rgba(255,255,255,${rr(.1,.4)})`;g.fillRect(rr(0,w),rr(0,h),2,rr(10,40));}}),transparent:true,opacity:.75,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
-  pg.position.set(0,am.position.y+2.1,-12);group.add(pg);W.portal=pg;
   const rack=merge([G(new THREE.BoxGeometry(3.6,.12,.3),'#5a4030',{p:[0,1.6,0]}),G(new THREE.BoxGeometry(3.6,.12,.3),'#5a4030',{p:[0,.5,0]}),G(new THREE.BoxGeometry(.12,1.9,.25),'#4a3424',{p:[-1.8,.95,0]}),G(new THREE.BoxGeometry(.12,1.9,.25),'#4a3424',{p:[1.8,.95,0]})]);
   W.rack=add(rack,-5,-4,.6);colliders.push({x:-5,z:-4,r:1.2});
   const fence=merge(Array.from({length:7},(_,i)=>G(new THREE.BoxGeometry(.1,1,.1),'#5a4434',{p:[i*.8-2.4,.5,0]})).concat([G(new THREE.BoxGeometry(5.2,.08,.06),'#5a4434',{p:[0,.75,0]}),G(new THREE.BoxGeometry(5.2,.08,.06),'#5a4434',{p:[0,.35,0]})]));
-  [[-8,14,.8],[9,-13,2.4],[18,0,1.6],[-18,1,1.5]].forEach(([x,z,r])=>add(fence,x,z,r));
+  [[-8,14,.8],[9,-13,2.4],[18,11,1.6],[-18,-11,1.5]].forEach(([x,z,r])=>add(fence,x,z,r));
   for(let i=0;i<6;i++){const a=i/6*TAU+.5;add(merge([G(new THREE.CylinderGeometry(.3,.35,.6,8),'#7a5a3a',{p:[0,.3,0]}),G(new THREE.CylinderGeometry(.32,.32,.05,8),'#4a3424',{p:[0,.45,0]})]),Math.cos(a)*7,Math.sin(a)*7+3);}
  }
- if(ch==='forest'||ch==='siege'){for(let i=0;i<(ch==='siege'?7:4);i++){const a=rr(0,TAU),r=rr(14,20),x=Math.cos(a)*r,z=Math.sin(a)*r;add(tent(pick(['#8a6a4a','#6a5a4a','#7a3a2a'])),x,z,rr(0,TAU));colliders.push({x,z,r:1.7});}addFire(group,6,-6,.8);
-  for(let i=0;i<5;i++){const a=rr(0,TAU),r=rr(8,18),x=Math.cos(a)*r,z=Math.sin(a)*r;add(G(new THREE.CylinderGeometry(.35,.4,4,8),'#4a3828',{r:[0,0,Math.PI/2],warp:.04}),x,z,rr(0,TAU)).position.y+=.3;colliders.push({x,z,r:.9});}
-  if(ch==='siege')for(let i=0;i<26;i++){const a=i/26*TAU,r=22,x=Math.cos(a)*r,z=Math.sin(a)*r;if(Math.abs(a-Math.PI*1.5)<.3)continue;const s=add(G(new THREE.ConeGeometry(.15,2.2,5),'#6a4a30',{p:[0,1.1,0]}),x,z);s.rotation.set(Math.sin(a)*.3,0,-Math.cos(a)*.3);}}
+ if(ch==='forest'||ch==='siege'){for(let i=0;i<(ch==='siege'?7:4);i++){const a=rr(0,TAU),r=rr(14,20),x=Math.cos(a)*r,z=Math.sin(a)*r;if(roadD(x,z)<4.5)continue;add(tent(pick(['#8a6a4a','#6a5a4a','#7a3a2a'])),x,z,rr(0,TAU));colliders.push({x,z,r:1.7});}addFire(group,6,-6,.8);
+  for(let i=0;i<5;i++){const a=rr(0,TAU),r=rr(8,18),x=Math.cos(a)*r,z=Math.sin(a)*r;if(roadD(x,z)<3.2)continue;add(G(new THREE.CylinderGeometry(.35,.4,4,8),'#4a3828',{r:[0,0,Math.PI/2],warp:.04}),x,z,rr(0,TAU)).position.y+=.3;colliders.push({x,z,r:.9});}
+  if(ch==='siege')for(let i=0;i<26;i++){const a=i/26*TAU,r=22,x=Math.cos(a)*r,z=Math.sin(a)*r;if(roadD(x,z)<3.5)continue;const s=add(G(new THREE.ConeGeometry(.15,2.2,5),'#6a4a30',{p:[0,1.1,0]}),x,z);s.rotation.set(Math.sin(a)*.3,0,-Math.cos(a)*.3);}}
  if(ch==='swamp'){const pl=merge(Array.from({length:14},(_,i)=>G(new THREE.BoxGeometry(1.6,.08,.32),i%2?'#5a4a34':'#4e3e2c',{p:[0,0,i*.36],r:[0,rr(-.05,.05),0]})));for(let i=0;i<4;i++){const a=i/4*TAU+.4,x=Math.cos(a)*12,z=Math.sin(a)*12;const m=add(pl,x,z,a);m.position.y=Math.max(m.position.y,B.water)+.1;}
-  for(let i=0;i<10;i++){const x=rr(-4,4)+14,z=rr(-6,6);add(G(new THREE.CylinderGeometry(.1,.12,2,6),'#3c3024',{p:[0,.6,0]}),x,z);}}
+  for(let i=0;i<10;i++){const x=rr(-4,4)+14,z=rr(-6,6);if(roadD(x,z)<2.2)continue;add(G(new THREE.CylinderGeometry(.1,.12,2,6),'#3c3024',{p:[0,.6,0]}),x,z);}}
  if(ch==='snow'){add(merge([G(new THREE.CylinderGeometry(2,2.3,6,10,4),'#6c707a',{p:[0,3,0],warp:.15}),G(new THREE.ConeGeometry(2.6,2,10),'#eef2f8',{p:[0,6.6,0],warp:.1})]),-18,-10);colliders.push({x:-18,z:-10,r:2.5});
   const tomb=scatter(PROP.tomb,30,{r0:10,r1:22,noQ:true});if(tomb)group.add(tomb);}
- if(B.ruins){for(let i=0;i<14;i++){const a=i/14*TAU,x=Math.cos(a)*27,z=Math.sin(a)*27;if(i%4===0){add(tower(),x,z,-a);colliders.push({x,z,r:2.6});}else add(wallSeg(11,rr(3,5.5)),x,z,-a+Math.PI/2);}
-  for(let i=0;i<8;i++){const a=i/8*TAU+.2,x=Math.cos(a)*15,z=Math.sin(a)*15;add(i%3?PROP.pillarBroken:PROP.pillar,x,z,rr(0,TAU));colliders.push({x,z,r:.6});}}
+ if(B.ruins){for(let i=0;i<14;i++){const a=i/14*TAU,x=Math.cos(a)*27,z=Math.sin(a)*27;if(roadD(x,z)<7.5)continue;if(i%4===0){add(tower(),x,z,-a);colliders.push({x,z,r:2.6});}else add(wallSeg(11,rr(3,5.5)),x,z,-a+Math.PI/2);}
+  for(let i=0;i<8;i++){const a=i/8*TAU+.2,x=Math.cos(a)*15,z=Math.sin(a)*15;if(roadD(x,z)<2.8)continue;add(i%3?PROP.pillarBroken:PROP.pillar,x,z,rr(0,TAU));colliders.push({x,z,r:.6});}}
  if(k==='waste'){const steps=[];for(let i=0;i<5;i++)steps.push(G(new THREE.BoxGeometry(10-i*1.6,.5,6-i*.8),i%2?'#3a2622':'#2e1e1a',{p:[0,i*.5+.25,0],warp:.04}));
   steps.push(G(new THREE.BoxGeometry(1.6,2.8,.4),'#1e1412',{p:[0,3.9,-1]}),G(new THREE.BoxGeometry(1.8,.4,1.2),'#2a1c18',{p:[0,2.9,-.5]}),...[-1,1].map(s=>G(new THREE.ConeGeometry(.2,1.4,4),'#6a1a12',{p:[s*.8,5.6,-1]})));
-  add(merge(steps),0,-24);colliders.push({x:0,z:-24,r:4.5});}
+  const ap=[[0,-24],[24,0],[-24,0],[0,24]].find(([x,z])=>roadD(x,z)>8)||[0,-24];add(merge(steps),ap[0],ap[1],Math.atan2(ap[0],ap[1])+Math.PI);colliders.push({x:ap[0],z:ap[1],r:4.5});}
 }
 
+/* ---------- region gates: stone arch + signpost at GATE_R on each road ---------- */
+function gateLabel(T){return canvasTex(512,128,(g,w,h)=>{g.fillStyle='#4a3626';g.fillRect(0,0,w,h);g.strokeStyle='#22180e';g.lineWidth=10;g.strokeRect(5,5,w-10,h-10);g.fillStyle='#f2e6c8';g.textAlign='center';g.textBaseline='middle';
+ let fs=46;const f=()=>g.font=`700 ${fs}px 'Cinzel',serif`;f();while(g.measureText(T).width>w-36&&fs>18){fs-=2;f();}g.fillText(T,w/2,h/2+2);});}
+function buildGates(group,R){
+ W.gates=[];W.sealSaid=false;
+ for(const rd of W.roads){const T=neighbour(R,rd.dir),sealed=regionSealed(T),x=rd.dx*GATE_R,z=rd.dz*GATE_R,px=-rd.dz,pz=rd.dx;
+  const label=sealed?'Sealed by the Hollow King':`\u2192 ${T.name} \u00b7 ${T.tier?'Danger '+T.tier:'Safe'}`;
+  const gy=Math.min(groundY(x,z),groundY(x+px*2.6,z+pz*2.6),groundY(x-px*2.6,z-pz*2.6));
+  const gate=new THREE.Group();gate.position.set(x,gy,z);gate.rotation.y=Math.atan2(rd.dx,rd.dz)+Math.PI;/* local +x = perpendicular, local +z = toward centre */
+  gate.add(mesh(merge([G(new THREE.BoxGeometry(1,5.8,1),'#6c6a66',{p:[-2.6,2.4,0],warp:.06}),G(new THREE.BoxGeometry(1,5.8,1),'#6c6a66',{p:[2.6,2.4,0],warp:.06}),
+   G(new THREE.BoxGeometry(1.4,.5,1.4),'#5a5854',{p:[-2.6,.1,0]}),G(new THREE.BoxGeometry(1.4,.5,1.4),'#5a5854',{p:[2.6,.1,0]}),
+   G(new THREE.BoxGeometry(6.8,1,1.3),'#5e5c58',{p:[0,5.7,0],warp:.08}),G(new THREE.BoxGeometry(1.1,1.2,1.4),'#74726c',{p:[0,6.4,0],warp:.05}),
+   ...[-1,1].map(sg=>G(new THREE.BoxGeometry(.5,.6,1.4),'#5e5c58',{p:[sg*3.1,6.45,0]}))])));
+  const sx=x+px*3.8-rd.dx*2.6,sz=z+pz*3.8-rd.dz*2.6,sy=groundY(sx,sz)-gy;
+  gate.add(mesh(merge([G(new THREE.CylinderGeometry(.08,.1,2.4,6),'#4a3424',{p:[3.8,sy+1.2,2.6]})])));
+  const board=new THREE.Mesh(new THREE.PlaneGeometry(2.4,.6),new THREE.MeshBasicMaterial({map:gateLabel(label),side:THREE.DoubleSide,fog:true}));board.position.set(3.8,sy+2.05,2.66);gate.add(board);
+  if(sealed){const ice=new THREE.Mesh(new THREE.BoxGeometry(4.3,5,.5,4,4,1),new THREE.MeshLambertMaterial({color:'#bfe4ff',emissive:'#2a5c8c',transparent:true,opacity:.78,flatShading:true}));ice.position.set(0,2.5,0);gate.add(ice);}
+  group.add(gate);colliders.push({x:x+px*2.6,z:z+pz*2.6,r:.75},{x:x-px*2.6,z:z-pz*2.6,r:.75},{x:sx,z:sz,r:.2});
+  W.gates.push({dir:rd.dir,x,z,dx:rd.dx,dz:rd.dz,target:T.id,sealed,label,obj:gate});}}
+function updateGates(){
+ if(state.mode!=='play'||state.traveling||player.dead)return;
+ for(const g of W.gates){const t=headPos.x*g.dx+headPos.z*g.dz,lat=Math.abs(-headPos.x*g.dz+headPos.z*g.dx);
+  if(g.sealed){const lim=GATE_R-2.4;if(lat<3.3&&t>lim&&t<GATE_R+3){rig.position.x-=g.dx*(t-lim);rig.position.z-=g.dz*(t-lim);
+    if(!W.sealSaid){W.sealSaid=true;say('Ice seals this road. The Hollow King will not let you pass until the crown\'s other servants have fallen.');}}continue;}
+  if(Math.hypot(headPos.x-g.x,headPos.z-g.z)<2.5){travelTo(g.target,OPP_DIR[g.dir]);return;}}}
+
 /* ---------- build / teardown ---------- */
-function disposeWorld(){if(!world)return;scene.remove(world);world.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material!==MAT&&o.material!==MAT_GLOW&&o.material!==MAT_METAL){if(o.material.map)o.material.map.dispose();o.material.dispose();}});world=null;flames=null;W.portal=null;W.rack=null;W.water=null;}
-function buildWorld(biomeKey,ch){
- disposeWorld();B=BIOMES[biomeKey];seedS=B.seed*7919;seedN=B.seed;colliders=[];world=new THREE.Group();world.name='world';
+function disposeWorld(){if(!world)return;scene.remove(world);world.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material!==MAT&&o.material!==MAT_GLOW&&o.material!==MAT_METAL){if(o.material.map)o.material.map.dispose();o.material.dispose();}});world=null;flames=null;W.rack=null;W.water=null;W.gates=[];}
+function buildWorld(R){
+ disposeWorld();W.region=R;B=BIOMES[R.biome];const sd=B.seed+R.seed*101;seedS=sd*7919;seedN=sd;colliders=[];setupRoads(R);
+ const ch=R.hub?'hub':R.chapter?CH_DRESS[R.biome]:null;world=new THREE.Group();world.name='world';
  bakeSky();
  scene.fog.color.set(B.fog[0]);scene.fog.near=B.fog[1];scene.fog.far=B.fog[2];
  hemi.color.set(B.hemi[0]);hemi.groundColor.set(B.hemi[1]);hemi.intensity=B.hemi[2];
  sun.color.set(B.sunL[0]);sun.intensity=B.sunL[1];sun.position.set(...B.sky.sun).normalize().multiplyScalar(80);if(sun.position.y<15)sun.position.y=15;
  fireLight.intensity=0;
  buildTerrain(world);buildProps();
- const clear=(r)=>(x,z)=>Math.hypot(x,z)<r||(ch==='hub'&&Math.hypot(x,z+12)<4);
+ const clear=(r)=>(x,z)=>Math.hypot(x,z)<r;
  const T=B.trees;
  const add=im=>{if(im)world.add(im);};
  if(T.pine)add(scatter(PROP.pine,T.pine,{r0:ch==='hub'?24:19,r1:85,s0:.9,s1:1.8,collide:.35,avoid:clear(19)}));
@@ -504,7 +556,7 @@ function buildWorld(biomeKey,ch){
  if(B.crystals)add(scatter(PROP.crystal,B.crystals,{r0:8,r1:70,s0:.5,s1:1.6,mat:MAT_GLOW,collide:.5,avoid:clear(8)}));
  if(B.bones)add(scatter(PROP.bones,B.bones,{r0:3,r1:40,s0:.8,s1:1.3}));
  if(B.near==='spires')add(scatter(PROP.spire,90,{r0:24,r1:80,s0:.8,s1:2.5,collide:1}));
- dressArena(world,ch);
+ dressArena(world,ch);buildGates(world,R);
  buildBackdrop(world);buildWeather(world);
  scene.add(world);AU.biome=B;
  let tris=0;world.traverse(o=>{if(o.isMesh&&o.geometry){const c=o.geometry.attributes.position.count/3;tris+=o.isInstancedMesh?c*o.count:c;}});W.tris=tris;
@@ -593,7 +645,7 @@ function locomotion(dt){
  camera.getWorldPosition(headPos);
  for(const c of colliders){const dx=headPos.x-c.x,dz2=headPos.z-c.z,d=Math.hypot(dx,dz2),m=c.r+.3;if(d<m&&d>1e-4){rig.position.x+=dx/d*(m-d);rig.position.z+=dz2/d*(m-d);}}
  for(const e of enemies){if(e.dead)continue;const dx=headPos.x-e.pos.x,dz2=headPos.z-e.pos.z,d=Math.hypot(dx,dz2),m=e.rad+.28;if(d<m&&d>1e-4){rig.position.x+=dx/d*(m-d)*.5;rig.position.z+=dz2/d*(m-d)*.5;}}
- const r=Math.hypot(headPos.x,headPos.z);if(r>33){rig.position.x-=headPos.x/r*(r-33);rig.position.z-=headPos.z/r*(r-33);}
+ const r=Math.hypot(headPos.x,headPos.z);if(r>PLAY_R){rig.position.x-=headPos.x/r*(r-PLAY_R);rig.position.z-=headPos.z/r*(r-PLAY_R);}
  camera.getWorldPosition(headPos);const fy=floorY(headPos.x,headPos.z);
  if(jump&&rig.position.y<=fy+.02&&!player.dead)player.vy=4.2;
  player.vy-=12*dt;rig.position.y+=player.vy*dt;if(rig.position.y<=fy){rig.position.y=lerp(rig.position.y,fy,player.vy<-1?1:.5);player.vy=0;}
@@ -1383,7 +1435,7 @@ const WEAPON_ID={'round shield':'shield',greatsword:'greatsword',longsword:'long
 const ENEMY_ID={'bandit':'bandit','bandit archer':'archer','skeleton':'skeleton','armored knight':'knight','brute':'brute','wraith':'wraith'};
 
 /* ============================== GAME STATE ============================== */
-const state={mode:'title',chapter:0,wave:-1,queue:[],spawnCD:0,waveDone:false,timer:0,inHub:true,hitstop:0,deaths:0,menuOpen:false,resetArm:0,complete:false};
+const state={region:HUB_ID,tier:0,traveling:false,mode:'title',chapter:0,wave:-1,queue:[],spawnCD:0,waveDone:false,timer:0,inHub:true,hitstop:0,deaths:0,menuOpen:false,resetArm:0,complete:false};
 let npc=null,dummy=null;const menu=new Panel(1.5,1.24,1200,992,{interactive:true,order:12});const endPanel=new Panel(1.1,.5,880,400,{interactive:true,order:13});
 let dummyPanel=null;
 function dummyHit(dmg,kind,part){if(!dummyPanel)return;dummyPanel.clear();dummyPanel.bg('rgba(14,11,20,.82)','rgba(233,135,74,.5)');dummyPanel.text('TRAINING DUMMY',240,44,26,'#e9874a','Cinzel',800,'center');dummyPanel.text(`${dmg}`,240,118,64,'#efe6d2','Alegreya Sans',700,'center');dummyPanel.text(`${kind} · ${part?part.k.replace(/[LR]$/,''):''}`,240,160,26,'#a89f90','Alegreya Sans',600,'center');dummyPanel.update();}
@@ -1416,27 +1468,54 @@ function showEnd(final){const p=endPanel;p.clear();p.bg();p.text(final?'THE CROW
  p.button('hub','Return to the Lantern Yard',60,160,760,90,{size:32});if(!final&&state.chapter<6)p.button('next',`Continue: ${STORY.chapters[state.chapter].name}`,60,270,760,90,{size:30});p.update();
  _v1.copy(headFwd).multiplyScalar(1.5).add(headPos);endPanel.mesh.position.set(_v1.x,headPos.y-.62,_v1.z);endPanel.mesh.lookAt(headPos.x,headPos.y-.3,headPos.z);scene.add(endPanel.mesh);endPanel.mesh.visible=true;}
 
-/* ---------- hub ---------- */
-async function enterHub(rebuild){
- await fadeTo(1);state.mode='loading';clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);bossPanel.mesh.visible=false;
- buildWorld('meadow','hub');state.inHub=true;state.chapter=0;state.wave=-1;state.queue=[];player.dead=false;player.hp=player.maxHp;player.mana=player.maxMana;player.slow=false;
- if(npc)scene.remove(npc.root);npc=buildNpc();
+/* ---------- travel between regions (fade, loading card, rebuild, arrive at the far gate) ---------- */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const loadPanel=new Panel(1.3,.62,1040,496,{order:1001});loadPanel.mesh.material.depthTest=false;loadPanel.mesh.visible=false;loadPanel.mesh.position.set(0,0,-1.4);camera.add(loadPanel.mesh);
+function drawLoading(R){const p=loadPanel;p.clear();p.bg('rgba(10,8,14,.95)');p.text('THE ROAD LEADS TO',520,74,26,'#a89f90','Alegreya Sans',700,'center');p.text(R.name.toUpperCase(),520,146,54,'#e9874a','Cinzel',800,'center');
+ p.text(R.tier?`Danger: tier ${R.tier}`:'Safe',520,206,32,R.tier>=4?'#e0645a':R.tier?'#e8c04a':'#8ad07a','Alegreya Sans',700,'center');
+ p.text(pick(R.tips),520,300,32,'#efe6d2','Alegreya Sans',500,'center',900);p.text('Loading…',520,452,24,'#6a6276','Alegreya Sans',500,'center');p.update();}
+function setupHub(){
+ player.dead=false;player.hp=player.maxHp;player.mana=player.maxMana;player.slow=false;
+ npc=buildNpc();
  dummy=new Enemy('bandit',new V3(5.5,0,-3.5),null);dummy.dummy=true;dummy.state='idle';if(dummy.weapon){dummy.weapon.remove();dummy.weapon=null;}dummy.root.position.y=floorY(5.5,-3.5);dummy.pos.set(5.5,0,-3.5);dummy.yaw=-.9;
  if(!dummyPanel){dummyPanel=new Panel(.5,.2,480,192,{order:11});}dummyPanel.mesh.position.set(5.5,floorY(5.5,-3.5)+2.35,-3.5);dummyPanel.mesh.lookAt(0,2.3,4);scene.add(dummyPanel.mesh);dummyHit(0,'swing at me','');
- giveLoadout();fillRack();
- menu.mesh.position.set(0,floorY(0,-10)+1.55,-9.6);menu.mesh.rotation.set(0,0,0);scene.add(menu.mesh);drawMenu();
- teleportRig(0,6,0);setMusic('hub');state.mode='play';fadeTo(0);
- if(!SAVE.seenIntro){SAVE.seenIntro=true;save();say(STORY.hub.intro);say(['Grab the sword on your hip with your grip button. Walk to the dummy and swing hard. Speed is what cuts.','When you are ready, point at the stone board by the portal and pull the trigger.']);}
- else if(state.justReturned){say(pick(STORY.hub.returnLines));}state.justReturned=false;}
+ fillRack();
+ menu.mesh.position.set(-4,floorY(-4,-10)+1.55,-9.6);menu.mesh.rotation.set(0,0,0);scene.add(menu.mesh);drawMenu();}
+/* travelTo(id, fromDir): fromDir is the side of the target region the player arrives on (null = centre). opt.setup runs after the build, opt.arrive after the fade-in. */
+async function travelTo(id,fromDir,opt={}){
+ const R=REGION_AT[id];if(!R||state.traveling)return false;
+ state.traveling=true;
+ try{
+  await fadeTo(1);state.mode='loading';drawLoading(R);loadPanel.mesh.visible=true;const t0=performance.now();await sleep(40);
+  clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);bossPanel.mesh.visible=false;
+  if(menu.mesh.parent)scene.remove(menu.mesh);if(dummyPanel&&dummyPanel.mesh.parent)scene.remove(dummyPanel.mesh);if(npc){scene.remove(npc.root);npc=null;}dummy=null;
+  state.region=id;state.tier=R.tier;state.inHub=!!R.hub;state.chapter=0;state.wave=-1;state.queue=[];state.pendingWave=null;state.waveDone=false;state.complete=false;
+  buildWorld(R);giveLoadout();if(R.hub)setupHub();
+  const rd=fromDir&&W.roads.find(r=>r.dir===fromDir);
+  if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,R.hub?6:7,0);
+  player.dead=false;setMusic(R.hub?'hub':'explore');
+  if(opt.setup)opt.setup(R);
+  SAVE.region=id;save();
+  const wait=1200-(performance.now()-t0);if(wait>0)await sleep(wait);
+  loadPanel.mesh.visible=false;state.mode='play';fadeTo(0);
+  const rs=regionState[id],first=!rs.visited;rs.visited=true;
+  if(opt.arrive)opt.arrive(R,first);else if(first)say(R.desc);
+ }finally{state.traveling=false;}
+ return true;}
+
+/* ---------- hub ---------- */
+async function enterHub(rebuild){
+ return travelTo(HUB_ID,null,{arrive:()=>{
+  if(!SAVE.seenIntro){SAVE.seenIntro=true;save();say(STORY.hub.intro);say(['Grab the sword on your hip with your grip button. Walk to the dummy and swing hard. Speed is what cuts.','When you are ready, point at the stone board by the fire and pull the trigger. Or walk any road out through its gate.']);}
+  else if(state.justReturned){say(pick(STORY.hub.returnLines));}state.justReturned=false;}});}
 
 /* ---------- chapters ---------- */
 const CH_DRESS={forest:'forest',swamp:'swamp',snow:'snow',castle:'castle',waste:'waste',meadow:'siege'};
+/* part 1: a chapter runs its waves in the region mapped to it (REGIONS[].chapter) */
 async function startChapter(n){
- await fadeTo(1);state.mode='loading';clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(menu.mesh.parent)scene.remove(menu.mesh);if(dummyPanel&&dummyPanel.mesh.parent)scene.remove(dummyPanel.mesh);if(npc){scene.remove(npc.root);npc=null;}dummy=null;
- const C=STORY.chapters[n-1];state.chapter=n;state.inHub=false;state.wave=-1;state.queue=[];state.waveDone=false;state.complete=false;maxTokens=n>=4?3:2;
- const bk=BIOME_BY_NAME[C.biome]||'forest';buildWorld(bk,CH_DRESS[bk]);giveLoadout();
- teleportRig(0,7,0);player.hp=player.maxHp;player.mana=player.maxMana;player.dead=false;player.slow=false;setMusic('explore');state.mode='play';fadeTo(0);
- narrQ.length=0;narrCur=null;say(C.intro);state.timer=Math.min(11,C.intro.length*3.6);state.pendingWave=0;}
+ const C=STORY.chapters[n-1],R=REGIONS.find(r=>r.chapter===n)||REGION_AT[HUB_ID];
+ return travelTo(R.id,null,{setup:()=>{state.chapter=n;maxTokens=n>=4?3:2;player.hp=player.maxHp;player.mana=player.maxMana;player.slow=false;},
+  arrive:()=>{narrQ.length=0;narrCur=null;say(C.intro);state.timer=Math.min(11,C.intro.length*3.6);state.pendingWave=0;}});}
 function startWave(i){const C=STORY.chapters[state.chapter-1];const wv=C.waves[i];state.wave=i;state.waveDone=false;say(wv.line);
  const list=[];for(const[k,v]of Object.entries(wv.enemies)){const id=ENEMY_ID[k]||k;for(let j=0;j<v;j++)list.push({type:id});}
  for(let j=list.length-1;j>0;j--){const r=Math.floor(Math.random()*(j+1));[list[j],list[r]]=[list[r],list[j]];}
@@ -1486,7 +1565,7 @@ function frame(){
  if(state.mode==='title'){attractA+=dt*.05;rig.position.set(Math.sin(attractA)*9,floorY(Math.sin(attractA)*9,Math.cos(attractA)*9+2),Math.cos(attractA)*9+2);rig.rotation.y=attractA+Math.PI;camera.position.set(0,1.7,0);camera.rotation.set(-.06,0,0);
   camera.getWorldPosition(headPos);updateWeather(dt,clock);if(flames)flames.forEach((f,i)=>{f.scale.setScalar(1+Math.sin(clock*13+i)*.1);});renderer.render(scene,camera);return;}
  readHands(dt);if(!XR)deskHands(dt);
- locomotion(dt);updateSlow(dt);const dtw=dt*tScale;
+ locomotion(dt);updateGates();updateSlow(dt);const dtw=dt*tScale;
  if(!XR&&deskGrab){deskGrab=false;const h=hands[1];if(h.held||h.part||h.tk)release(h);else tryGrab(h);}
  uiInteract();
  for(const h of hands){if(XR){if(pressed(h,'sq'))tryGrab(h);if(released(h,'sq'))release(h);}if(h.part)h.part.rd.P[h.part.i].pin.copy(h.pos);tkUpdate(h,dt);if(state.mode==='play')handMagic(h,dt);}
@@ -1498,7 +1577,6 @@ function frame(){
  for(const rd of ragdolls)stepRagdoll(rd,dtw);for(const g of gibs)stepGib(g,dtw);
  combat(dt);updateProjectiles(dtw);updateShock(dtw);fx.update(dtw);updateBolts(dt);updateWeather(dt,clock);updateWaves(dt);updateNpc(dt);
  if(flames)flames.forEach((f,i)=>{f.scale.setScalar((1+Math.sin(clock*13+i)*.1+Math.sin(clock*7.3)*.06));f.rotation.y+=dt*.6;});if(fireLight.intensity>0)fireLight.intensity=3.5+Math.sin(clock*11)*.5+Math.sin(clock*17)*.3;
- if(W.portal){W.portal.material.opacity=.55+.2*Math.sin(clock*2);W.portal.scale.y=1+Math.sin(clock*1.3)*.02;}
  player.invuln=Math.max(0,player.invuln-dt);player.mana=Math.min(player.maxMana,player.mana+(hands.some(h=>h.cast)?2:9)*dt);if(clock-player.lastHurt>6&&!player.dead)player.hp=Math.min(player.maxHp,player.hp+3*dt);
  updateNarr(dt);hudT-=dt;if(hudT<=0){hudT=.1;drawWrist();}
  if(bossPanel.mesh.visible){bossPanel.mesh.position.copy(narrPos).y+=.34;bossPanel.mesh.lookAt(headPos.x,bossPanel.mesh.position.y,headPos.z);}
@@ -1521,12 +1599,12 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
  camera.position.set(0,0,0);if(state.mode==='title')await startGame(true);else{$('#ui').classList.add('hide');}setTimeout(attachWrist,500);}catch(err){$('#status').textContent='Could not start VR: '+err.message;}};
 (async()=>{
  try{await document.fonts.ready;}catch(e){}
- buildWorld('meadow','hub');npc=buildNpc();
+ buildWorld(REGION_AT[HUB_ID]);npc=buildNpc();
  $('#status').textContent=`World ready · ${(W.tris/1000).toFixed(0)}k triangles`;
  if(navigator.xr){try{const ok=await navigator.xr.isSessionSupported('immersive-vr');const b=$('#b-vr');b.disabled=!ok;b.textContent=ok?'Enter VR':'VR not available here';if(!ok)$('#status').textContent+=' · Open this page in the Meta Quest browser to play in VR';}catch(e){$('#b-vr').textContent='VR not available here';}}
  else{$('#b-vr').textContent='VR not available here';$('#status').textContent+=' · WebXR needs HTTPS and a VR browser';}
 })();
-window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,startChapter,enterHub,startWave,SAVE,W,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
+window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,startChapter,enterHub,startWave,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
 
 </script>
 </body>
