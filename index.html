@@ -40,7 +40,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
  <p class="eyebrow">A WebXR sword-and-sorcery game</p>
  <h1 id="t-title">Hollowmere: The Cold Crown</h1>
  <p class="tag" id="t-tag">Cut through the frost-crowned dead to break the Hollow King's grip.</p>
- <div class="btns"><button id="b-vr" disabled>Checking for VR…</button><button id="b-desk" class="alt">Play on desktop</button></div>
+ <div class="btns"><button id="b-vr" disabled>Checking for VR…</button><button id="b-desk" class="alt">Play on desktop</button><button id="b-reset" class="alt">Reset progress</button></div>
  <p id="status">Building the world…</p>
  <div class="controls">
   <section><h2>Quest controllers</h2><dl>
@@ -602,7 +602,10 @@ const player={hp:100,maxHp:100,mana:100,maxMana:100,focus:100,vy:0,dead:false,hu
 const SAVE_KEY='hollowmere-vr-v1';
 const SAVE={done:0,weapons:['longsword','dagger'],spells:[],turn:'snap',quality:'high',seenIntro:false};
 try{Object.assign(SAVE,JSON.parse(localStorage.getItem(SAVE_KEY)||'{}'));}catch(e){}
-function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(SAVE));}catch(e){}}
+/* wipe every bit of progress (spells, skills, level, gold, weapons, quests, story, regions); keep only turning + detail settings; restart clean */
+let RESETTING=false;
+function resetProgress(){RESETTING=true;try{localStorage.setItem(SAVE_KEY,JSON.stringify({turn:SAVE.turn,quality:SAVE.quality}));}catch(e){}player.slow=false;tScale=1;try{renderer.xr.getSession()?.end();}catch(e){}location.reload();}
+function save(){if(RESETTING)return;try{localStorage.setItem(SAVE_KEY,JSON.stringify(SAVE));}catch(e){}}
 QF=QUALITY[SAVE.quality]||1;
 let XR=false,clock=0,tScale=1;
 
@@ -2875,7 +2878,7 @@ function drawMenu(){const m=menu;m.clear();m.bg();const mq=mainCur();m.text(REGI
 function onMenu(id){sfx('ui',null,.6);
  if(id.startsWith('turn-')){SAVE.turn=id.slice(5);save();}
  if(id.startsWith('q-')){SAVE.quality=id.slice(2);QF=QUALITY[SAVE.quality];save();enterHub(true);return;}
- if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false,main:[],quests:{active:{},done:[]}});mainReset();PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
+ if(id==='reset'){if(state.resetArm>clock){resetProgress();return;}state.resetArm=clock+3;}
  if(id==='hub'){enterHub();return;}
  drawMenu();}
 /* ending card: credits, a few numbers, and the world stays open */
@@ -3151,6 +3154,7 @@ async function startGame(vr){
  camera.rotation.set(0,0,0);pitch=0;attachWrist();
  await enterHub();}
 $('#b-desk').onclick=()=>startGame(false);
+$('#b-reset').onclick=()=>{if(confirm('Erase all progress? Spells, skills, level, gold, weapons, quests and story will be reset.'))resetProgress();};
 $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor','bounded-floor']});
  s.addEventListener('end',()=>{XR=false;useDesktopHands();attachWrist();camera.position.set(0,1.65,0);$('#ui').classList.remove('hide');$('#b-desk').textContent='Continue on desktop';});
  await renderer.xr.setSession(s);XR=true;try{renderer.xr.setFoveation(1);}catch(e){}try{if(s.supportedFrameRates&&s.updateTargetFrameRate){const r=[...s.supportedFrameRates];if(r.includes(72))s.updateTargetFrameRate(72);}}catch(e){}
