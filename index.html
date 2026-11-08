@@ -688,14 +688,14 @@ function updateNarr(dt){
  const toPanel=_v2.subVectors(narrPos,headPos).setY(0).normalize();if(!narr.mesh.visible||toPanel.dot(headFwd)<.75||narrPos.distanceTo(headPos)>3.5)narrPos.lerp(_v1,narr.mesh.visible?Math.min(1,dt*2.5):1);
  narrPos.y=lerp(narrPos.y,headPos.y-.15,Math.min(1,dt*3));narr.mesh.position.copy(narrPos);narr.mesh.lookAt(headPos.x,narrPos.y,headPos.z);}
 /* wrist HUD */
-const wrist=new Panel(.12,.0825,320,220,{order:15});wrist.mesh.material.depthTest=true;
+const wrist=new Panel(.12,.0975,320,260,{order:15});wrist.mesh.material.depthTest=true;
 let wristKey='';
-function drawWrist(){const pg=SAVE.prog,cdl=['fire','push','slow'].filter(spellKnown).map(s=>[s,Math.max(0,(PROG.cd[s]||0)-clock)]);const k=[Math.ceil(player.hp),Math.floor(player.mana),Math.floor(player.focus),hands[0].spell,hands[1].spell,spellList().length,player.slow,pg.level,pg.xp,pg.gold,pg.points,cdl.map(c=>c[1].toFixed(1))].join();if(k===wristKey)return;wristKey=k;
+function drawWrist(){const pg=SAVE.prog,cdl=['fire','push','slow'].filter(spellKnown).map(s=>[s,Math.max(0,(PROG.cd[s]||0)-clock)]);const k=[Math.ceil(player.hp),Math.floor(player.mana),Math.floor(player.focus),hands[0].spell,hands[1].spell,spellList().length,player.slow,pg.level,pg.xp,pg.gold,pg.points,cdl.map(c=>c[1].toFixed(1)),questLine()].join();if(k===wristKey)return;wristKey=k;
  wrist.clear();wrist.bg('rgba(14,11,20,.9)','rgba(233,135,74,.5)');const bar=(y,v,c,l,bh=20)=>{const g=wrist.g;g.fillStyle='rgba(255,255,255,.12)';g.fillRect(70,y,230,bh);g.fillStyle=c;g.fillRect(70,y,230*clamp(v,0,1),bh);wrist.text(l,18,y+bh-2,20,'#a89f90','Alegreya Sans',700);};
  bar(16,player.hp/player.maxHp,'#d6463e','HP');bar(42,player.mana/player.maxMana,'#4a86e8','MP');if(spellKnown('slow'))bar(68,player.focus/100,'#e8c04a','TIME');
  bar(96,pg.level>=PROG.maxLevel?1:pg.xp/PROG.need(pg.level),'#b48aff','Lv'+pg.level,14);wrist.text(`${pg.gold} gold${pg.points?` · ${pg.points} skill pt`:''}`,18,138,22,'#e8c04a','Alegreya Sans',700);
  const sp=h=>{const l=spellList();return l.length?SPELLS[l[h.spell%l.length]].name:'—';};wrist.text(`L ${sp(hands[0])} · R ${sp(hands[1])}`,18,168,22,'#efe6d2','Alegreya Sans',600);
- wrist.text(cdl.filter(c=>c[1]>0).map(c=>`${SPELLS[c[0]].name.split(' ')[0]} ${c[1].toFixed(1)}`).join(' · '),18,198,20,'#a89f90','Alegreya Sans',600);wrist.update();}
+ wrist.text(cdl.filter(c=>c[1]>0).map(c=>`${SPELLS[c[0]].name.split(' ')[0]} ${c[1].toFixed(1)}`).join(' · '),18,198,20,'#a89f90','Alegreya Sans',600);wrist.text(questLine(),18,238,18,'#e8c04a','Alegreya Sans',700,'left');wrist.update();}
 function attachWrist(){const h=hands[0];h.grip.add(wrist.mesh);wrist.mesh.position.set(.0,.045,.09);wrist.mesh.rotation.set(-Math.PI/2.4,0,0);if(!XR){wrist.mesh.position.set(0,.06,.02);wrist.mesh.rotation.set(-.6,0,0);}}
 /* boss bar & enemy health bars */
 const bossPanel=new Panel(1.1,.12,880,96,{order:19});bossPanel.mesh.visible=false;scene.add(bossPanel.mesh);
@@ -1548,6 +1548,1254 @@ function updateProgression(dt){
   const p=w.obj.position;d.beam.position.set(p.x,floorY(p.x,p.z)+1.6,p.z);d.beam.material.opacity=.25+.12*Math.sin(clock*4);}}
 progMigrate();applyStats(true);
 
+/* ============================== VILLAGERS & QUESTS ============================== */
+/* Hollowmere: The Cold Crown -- storyline and quest data (v2).
+   Data only. Region ids are "col,row" with row 0 in the north.
+   Optional speaker fields: startSpeaker / doneSpeaker hold an npc id, or "" for the narrator.
+   When absent, main-quest lines are spoken by the mentor and side-quest lines by the giver. */
+const STORY2 = {
+  "title": "Hollowmere: The Cold Crown",
+  "tagline": "The frost came out of the wood three winters ago. Someone made it. Follow it home.",
+  "mentor": {
+    "name": "Idris Vane",
+    "description": "A grey-bearded lamplighter who once served the Hollow King. He lights every lamp in the Yard by hand, and never says why so carefully."
+  },
+  "prologue": [
+    "Easy now. You were lying in the snow at the edge of the wood. Most people who do that stay there.",
+    "This is the Lantern Yard. I am Idris Vane. I light the lamps, and the lamps keep the frost off the doors.",
+    "Three winters ago the frost came out of the wood. The dead came with it, and they answer to the Hollow King.",
+    "He wears a crown of ice. I served him once, before he was hollow. I know what he can do.",
+    "You have a sword and you are still standing. That makes you the best news this village has had in a year.",
+    "Bandits hold the Edgewood road to the east. Start there. The wood will tell us the rest."
+  ],
+  "acts": [
+    {"act": 1, "name": "The Ledger and the Frost"},
+    {"act": 2, "name": "The Bells Remember"},
+    {"act": 3, "name": "The Last Lamp"}
+  ],
+  "main": [
+    {
+      "id": "m1_edgewood",
+      "act": 1,
+      "title": "The Edge of the Wood",
+      "objective": "Clear the bandit camps in the Edgewood.",
+      "region": "2,2",
+      "trigger": {"type": "clearRegion", "region": "2,2"},
+      "startLines": [
+        "The Edgewood road is the only way out of the Yard that the dead do not walk.",
+        "Bandits have made it theirs. Clear the camps, and do not let the archers keep their distance."
+      ],
+      "doneLines": [
+        "The camps are quiet. One of them kept a ledger. Names, dates, and a price beside each.",
+        "These are Thornfield folk. Someone has been selling the living to the dead.",
+        "The ledger is signed with a crow. Corvin Rook. He holds the old granary in Thornfield.",
+        "Here. A little fire for the road. Point and let it go."
+      ],
+      "reward": {"xp": 100, "gold": 40, "spell": "fireball"}
+    },
+    {
+      "id": "m2_tithe",
+      "act": 1,
+      "title": "The Tithe-Taker",
+      "objective": "Find Corvin Rook in Thornfield and end his trade.",
+      "region": "0,2",
+      "trigger": {
+        "type": "boss",
+        "region": "0,2",
+        "boss": {
+          "name": "Corvin Rook, the Tithe-Taker",
+          "type": "bandit",
+          "taunt": [
+            "Every farm out here still breathes because I pay the dead. What do you pay them?",
+            "Kill me and they come for their tithe anyway. Go on, then."
+          ],
+          "deathLine": "Tell Thornfield I kept the wolves off. Tell them it cost less than it should have."
+        }
+      },
+      "startLines": [
+        "Corvin Rook sells Thornfield folk to the dead, and the dead leave his granary alone.",
+        "Maybe he thinks that makes him a shepherd. Go and ask him."
+      ],
+      "doneLines": [
+        "The granary was full. He fed half of Thornfield with it. The other half he sold.",
+        "I would like to tell you he was a monster. He was a frightened man with a ledger.",
+        "His buyers came across Black Water. The dead are being ferried somewhere. Find the ferrywoman."
+      ],
+      "reward": {"xp": 150, "gold": 60}
+    },
+    {
+      "id": "m3_ferry",
+      "act": 1,
+      "title": "Black Water",
+      "objective": "Find the ferrywoman at Black Water Fen.",
+      "region": "0,1",
+      "trigger": {"type": "talk", "npc": "ferryman"},
+      "startLines": [
+        "There is one ferry across Black Water, and one woman who still works it. Old Tamsin.",
+        "She ferries anyone who pays. I have never asked what the dead pay her with."
+      ],
+      "doneSpeaker": "ferryman",
+      "doneLines": [
+        "The dead pay in coin from the old war. King's silver. I take it. Silver is silver.",
+        "I row them north to the Whisperwood shore. They walk into the trees and do not come back.",
+        "And you. I know your face. I rowed you across once, three winters back, with the King's army.",
+        "Do not look at me like that. Faces blur. Take this shield. Some knight left it on my dock."
+      ],
+      "reward": {"xp": 150, "gold": 50, "weapon": "shield"}
+    },
+    {
+      "id": "m4_whisper",
+      "act": 1,
+      "title": "Where the Frost Began",
+      "objective": "Follow the dead into the heart of the Whisperwood.",
+      "region": "1,1",
+      "trigger": {
+        "type": "boss",
+        "region": "1,1",
+        "boss": {
+          "name": "Ysolde, the First Frost",
+          "type": "wraith",
+          "taunt": [
+            "You smell of lamp oil. Did he send you? Of course he sent you.",
+            "I was a queen once. Now I am the cold that keeps the door shut."
+          ],
+          "deathLine": "Tell Idris I forgive him. I never could manage it while I was alive."
+        }
+      },
+      "startLines": [
+        "The frost came out of the Whisperwood first. If the dead gather anywhere, it is there.",
+        "Something old waits at the heart of it. The hermit calls it the Queen. Mind the dark orbs."
+      ],
+      "doneLines": [
+        "Ysolde. Aldwin's queen. Her hall had the brightest lamps in the realm. I lit them.",
+        "She forgave me. I do not know what for. Truly, I do not.",
+        "The dead walk on toward Frostfang Pass. Halvard holds it. He was the King's sworn shield.",
+        "Take what she left in the frost. It pushes the world away from you. Use it when they crowd you."
+      ],
+      "reward": {"xp": 250, "gold": 80, "spell": "push"}
+    },
+    {
+      "id": "m5_halvard",
+      "act": 2,
+      "title": "The Unbent",
+      "objective": "Defeat Halvard the Unbent at Frostfang Pass.",
+      "region": "2,1",
+      "trigger": {
+        "type": "boss",
+        "region": "2,1",
+        "boss": {
+          "name": "Halvard the Unbent",
+          "type": "knight",
+          "taunt": [
+            "I swore an oath to the crown. You will not pass.",
+            "Captain? No. The Captain died on the Vale road. You are only wearing his face."
+          ],
+          "deathLine": "The oath ends here. Ask your lamplighter who forged the crown."
+        }
+      },
+      "startLines": [
+        "Halvard the Unbent never broke an oath alive, and death has not changed him.",
+        "He will not yield, so do not ask him to. The hunter at the pass knows the high trails."
+      ],
+      "doneLines": [
+        "He called you Captain. The dead see strangely. Do not let it trouble you.",
+        "The pass is open. Past the Fen stands Ashgrave Keep. Its bells rang for every death in the war.",
+        "If the King has a weakness, the Keep's chronicle will name it. Go and read it.",
+        "And take this. Halvard's storm. He would have wanted it spent on something better than a grave."
+      ],
+      "reward": {"xp": 350, "gold": 120, "spell": "lightning"}
+    },
+    {
+      "id": "m6_bells",
+      "act": 2,
+      "title": "The Bells of Ashgrave",
+      "objective": "Silence the Bellwarden and reach the chronicle in Ashgrave Keep.",
+      "region": "0,0",
+      "trigger": {
+        "type": "boss",
+        "region": "0,0",
+        "boss": {
+          "name": "Brother Osric, the Bellwarden",
+          "type": "skeleton",
+          "taunt": [
+            "Every bell is a name. I ring them so the King remembers who died to hold the fire.",
+            "There is a bell here with your name on it, Captain. It has waited a long time."
+          ],
+          "deathLine": "The last bell is yours. Read the chronicle. Then decide who you are."
+        }
+      },
+      "startLines": [
+        "Ashgrave rang a bell for every soldier who fell on the Vale road. Someone is still ringing them.",
+        "The chronicle is in the bell hall. Get to it, whatever stands guard."
+      ],
+      "doneSpeaker": "",
+      "doneLines": [
+        "The chronicle is in the King's own hand. The ink is old and steady.",
+        "When the red eclipse woke the Cinder in the Vale, I asked Idris for a way to hold it. He made me a crown of winter.",
+        "It will freeze the fire, and me with it, and every soldier who died to buy the time. Idris wept. I made him do it.",
+        "Beside the last page hangs the roll of the King's guard. The Captain is drawn there. The face is yours.",
+        "Under it, in another hand: Rekindled with my last good lamp. Forgive me. I.V.",
+        "In the silence of the bell hall, time itself feels slower. Something of the Bellwarden stays with you."
+      ],
+      "reward": {"xp": 450, "gold": 150, "spell": "slow"}
+    },
+    {
+      "id": "m7_confession",
+      "act": 2,
+      "title": "The Lamplighter's Confession",
+      "objective": "Return to the Lantern Yard and confront Idris.",
+      "region": "1,2",
+      "trigger": {"type": "talk", "npc": "idris"},
+      "startLines": [
+        "I know what you found in the bell hall. I can hear it in how quiet you are.",
+        "Come back to the Yard. I will not make you ask twice."
+      ],
+      "doneSpeaker": "idris",
+      "doneLines": [
+        "Yes. I forged the crown. Aldwin asked for it, and I would do it again. The Cinder would have burned everything.",
+        "Ysolde begged me not to. I did it anyway. That is what she forgave.",
+        "You were the Captain of his guard. You died holding the Vale road so I could finish the crown.",
+        "The crown is cracking. When it breaks the Cinder wakes, unless something kills its heart first.",
+        "Only the dead can walk the Vale and the Throne road. So I lit a lamp in a dead man. I needed you.",
+        "Hate me later. I will still be here. Go to the Cinder Vale first."
+      ],
+      "reward": {"xp": 200, "gold": 100}
+    },
+    {
+      "id": "m8_cinder",
+      "act": 3,
+      "title": "The Heart of the Cinder",
+      "objective": "Destroy the Cinder's heart in the Cinder Vale.",
+      "region": "1,0",
+      "trigger": {
+        "type": "boss",
+        "region": "1,0",
+        "boss": {
+          "name": "Ser Aurel, the Cinder Saint",
+          "type": "knight",
+          "taunt": [
+            "The fire only asked to be loved. Your King gave it ice instead.",
+            "Burn with me, Captain. You were always better at dying than living."
+          ],
+          "deathLine": "Ash. Only ash. The sun is just the sun again."
+        }
+      },
+      "startLines": [
+        "The Cinder Vale is where you died. The ground still remembers the heat.",
+        "Ser Aurel was the King's marshal. He walked into the fire and came out kneeling to it. Its heart beats in him."
+      ],
+      "doneLines": [
+        "The heart is out. The red sky is going plain grey. I never thought I would be glad of grey.",
+        "There is nothing left under the crown to keep frozen. The seal on the Hollow Throne is breaking.",
+        "Aldwin has waited three winters. Let us not make him wait any longer."
+      ],
+      "reward": {"xp": 600, "gold": 200},
+      "unlocks": "2,0"
+    },
+    {
+      "id": "m9_road",
+      "act": 3,
+      "title": "The Road of Kneeling Dead",
+      "objective": "Walk the frozen road into the Hollow Throne.",
+      "region": "2,0",
+      "trigger": {"type": "enter", "region": "2,0"},
+      "startLines": [
+        "The Throne road is open. Every soldier who held the Vale is kneeling along it.",
+        "They are waiting for their Captain. Walk through them. They will not stop you."
+      ],
+      "doneLines": [
+        "There. Second rank, the tall one. Your sergeant. He laughed louder than anyone in the army.",
+        "I will be at the steps with you. Whatever happens when the crown breaks, I will be there."
+      ],
+      "reward": {"xp": 300, "gold": 100}
+    },
+    {
+      "id": "m10_crown",
+      "act": 3,
+      "title": "The Cold Crown",
+      "objective": "Break the Hollow King's crown.",
+      "region": "2,0",
+      "trigger": {
+        "type": "boss",
+        "region": "2,0",
+        "boss": {
+          "name": "The Hollow King",
+          "type": "brute",
+          "taunt": [
+            "Captain. He brought you back to kill me. Of course he did.",
+            "I held the fire for three winters. Kneel, and hold the cold with me."
+          ],
+          "deathLine": "Is it spring, Idris? Tell me it is spring."
+        }
+      },
+      "startLines": [
+        "There he is. Aldwin Hollow. He was a kind king. Remember that, even now.",
+        "Break the crown. Do not hesitate on my account, or on his."
+      ],
+      "doneLines": [
+        "It is spring, Aldwin. Nearly. Rest now.",
+        "The crown is breaking. Do you feel it? The dead are lying down. All of them.",
+        "No. Not you. Not yet. Hold still, Captain. I have one lamp left."
+      ],
+      "reward": {"xp": 1000, "gold": 500}
+    }
+  ],
+  "regions": {
+    "1,2": {
+      "name": "The Lantern Yard",
+      "enterFirst": ["Lamps on every post, and every one of them lit. The frost stops at the edge of their light."],
+      "enter": ["Back in the Yard. The lamps are still burning.", "Smell that? Marta has the stew on.", "Home, or the nearest thing to it."],
+      "loreTips": [
+        "Lamplighters once had the King's ear. Now they keep the frost off the doors.",
+        "The dead have never set foot in the Lantern Yard. Nobody is quite sure why.",
+        "Rest in the Yard to recover. The lamps keep watch so you do not have to."
+      ]
+    },
+    "0,2": {
+      "name": "Thornfield",
+      "enterFirst": ["Thornfield. The best barley in the realm, once. Half the fields are frozen now, and the other half are scared."],
+      "enter": ["The scarecrows are watching again.", "Thornfield wind. Wet straw and woodsmoke.", "Mind the furrows. Frozen ruts break ankles."],
+      "loreTips": [
+        "Thornfield farmers bury their dead in the fields, so they can keep working beside them.",
+        "The old granary once held a year of grain for the whole valley.",
+        "A Thornfield scarecrow wears its maker's oldest coat, for luck."
+      ]
+    },
+    "2,2": {
+      "name": "Edgewood",
+      "enterFirst": ["The Edgewood. Bandits like it. The trees hide the road, and the dead rarely come this far south."],
+      "enter": ["Watch the treeline. Archers like the high roots.", "Smoke ahead means a camp.", "Quiet woods are lying woods."],
+      "loreTips": [
+        "Most Edgewood bandits were farmers three winters ago.",
+        "Bandit archers keep their distance. Close the gap, or raise a shield.",
+        "The Edgewood road was the King's highway before it was anyone's hiding place."
+      ]
+    },
+    "0,1": {
+      "name": "Black Water Fen",
+      "enterFirst": ["Black Water Fen. The water is so still it looks like glass, until something moves under it."],
+      "enter": ["Stay on the boards. The mud keeps what it takes.", "Listen for the ferry bell.", "The reeds are hissing. Something is walking in them."],
+      "loreTips": [
+        "The village of Lowmere lies under the Fen. On still nights you can hear its bell.",
+        "Old Tamsin has worked the Black Water ferry for forty years.",
+        "Skeletons are slow in the Fen mud. Use it."
+      ]
+    },
+    "1,1": {
+      "name": "Whisperwood",
+      "enterFirst": ["The Whisperwood. This is where the frost came from. The trees here whisper names.", "Do not answer them."],
+      "enter": ["The whispering has started again.", "The trees are not talking to you. Keep walking.", "Deeper in, the frost on the bark grows thicker."],
+      "loreTips": [
+        "Queen Ysolde planted the Whisperwood's silver birches on her wedding day.",
+        "Wraiths fire dark orbs. Keep moving and they will miss.",
+        "The hermit of the Whisperwood was once a scholar at the King's court."
+      ]
+    },
+    "2,1": {
+      "name": "Frostfang Pass",
+      "enterFirst": ["Frostfang Pass. The snow here never melts, not even at noon. Keep your blood moving."],
+      "enter": ["Wind off the ridge. Head down, blade up.", "The aurora is out over Frostfang.", "Brutes on the switchbacks. Listen for the scrape."],
+      "loreTips": [
+        "Halvard the Unbent held Frostfang Pass for nine days against the Cinder's first fire.",
+        "Brutes swing wide and slow. Step inside the arc.",
+        "Pass hunters read the snow like a ledger."
+      ]
+    },
+    "0,0": {
+      "name": "Ashgrave Keep",
+      "enterFirst": ["Ashgrave Keep. Storm on the walls, and the bells are ringing for no one."],
+      "enter": ["Thunder over the courtyard. The bells answer it.", "Do not count the bells. You will not like the number.", "Wet stone, cold air, and the dead on the stairs."],
+      "loreTips": [
+        "Ashgrave rang a bell for every soldier who died on the Vale road. There are three hundred bells.",
+        "The Keep's chronicle was written in the King's own hand.",
+        "Armored knights guard their front. Strike from the side, or break the guard first."
+      ]
+    },
+    "1,0": {
+      "name": "The Cinder Vale",
+      "enterFirst": ["The Cinder Vale. The sky is red, and the ground is still warm from a fire three winters old."],
+      "enter": ["The ash is ankle-deep. Some of it was people.", "Red sky, black ground. The Vale has not changed.", "Heat shimmer on the ridge. Something out there is still burning."],
+      "loreTips": [
+        "The red eclipse woke the Cinder beneath the Vale. It has not set since.",
+        "The King's army made its last stand on the Vale road.",
+        "Fire does not care whose side you were on."
+      ]
+    },
+    "2,0": {
+      "name": "The Hollow Throne",
+      "enterFirst": ["The Hollow Throne. Ice over black stone, and the dead kneeling all the way up the steps."],
+      "enter": ["The kneeling dead do not look up.", "Colder than anywhere you have ever stood.", "Every step of this road is a soldier's grave."],
+      "loreTips": [
+        "The Hollow Throne was sealed the day the crown was forged.",
+        "King Aldwin Hollow was crowned twice. Once with gold, once with winter.",
+        "The crown of ice is the frost's heart. Break the crown, and the winter ends."
+      ]
+    }
+  },
+  "npcs": [
+    {
+      "id": "idris",
+      "name": "Idris Vane",
+      "role": "lamplighter",
+      "region": "1,2",
+      "look": {"skin": "#d9b89a", "hair": "#b8b4ac", "shirt": "#4a4038", "pants": "#2e2a26", "accessory": "beard"},
+      "barks": [
+        "Oil, wick, flint. The whole trade fits in a pocket. The hard part is coming back every night.",
+        "Keep your guard high. The dead are patient, and patience beats speed more often than it should.",
+        "I used to light the lamps in the King's hall. Two hundred of them, every dusk.",
+        "If you hear me talking to the lamps, no, you did not.",
+        "Eat something. You look like a man who forgets to.",
+        "The frost hates a steady flame. So do I, some days. It shows you everything.",
+        "Wren keeps stealing my wick-hook. I keep letting her."
+      ],
+      "afterLines": {
+        "m2_tithe": "Corvin Rook. I sold that man lamp oil once. He always paid exact.",
+        "m4_whisper": "Do the birches still whisper? They used to sing, when she was alive.",
+        "m7_confession": "You can hate me and still eat supper. Most of the village manages both.",
+        "m8_cinder": "Grey sky. I had forgotten what an ordinary day looks like."
+      }
+    },
+    {
+      "id": "bryn",
+      "name": "Bryn Hallow",
+      "role": "blacksmith",
+      "region": "1,2",
+      "look": {"skin": "#c08a64", "hair": "#3b2a20", "shirt": "#6b3a2a", "pants": "#3a3430", "accessory": "apron"},
+      "barks": [
+        "Mind the anvil. It has broken more toes than the dead have.",
+        "Good steel remembers the hand that made it. Bad steel remembers nothing, like my brother.",
+        "Bring me iron, not compliments. I have plenty of compliments.",
+        "That edge is a disgrace. Come here. No, closer. Hold still.",
+        "My Teodor swung a hammer like a poet. I swing one like a debt collector.",
+        "If it bends, I will fix it. If it breaks, you did something stupid. I will still fix it.",
+        "The forge is the warmest place in the Yard. That is why the cat lives here."
+      ],
+      "afterLines": {
+        "m1_edgewood": "Bandit blades. Cheap iron and cheaper men. Bring me better.",
+        "m5_halvard": "Halvard's sword was forged in this Yard. My grandmother's work. Shame what he did with it.",
+        "m6_bells": "Three hundred bells. My Teodor has one of them, somewhere.",
+        "m10_crown": "If Teodor is lying still now, I can stop setting a plate for him."
+      }
+    },
+    {
+      "id": "odo",
+      "name": "Odo Pellam",
+      "role": "merchant",
+      "region": "1,2",
+      "look": {"skin": "#e2c09e", "hair": "#7a4a2a", "shirt": "#2f5a4a", "pants": "#4a3a2a", "accessory": "hat"},
+      "barks": [
+        "Blades, shields, the finest spears this side of the frost. Also the only spears this side of the frost.",
+        "Every price is fair. Some are fairer than others. Those are for friends.",
+        "No haggling with the dead. They never have exact change.",
+        "This axe belonged to a hero. Possibly. It certainly belonged to someone.",
+        "I lost a cart in the Fen once. I still dream about that cart.",
+        "Gold is cold comfort, friend. But it is the only comfort that spends.",
+        "Buy two and I will throw in my sincerest regards."
+      ],
+      "afterLines": {
+        "m2_tithe": "Corvin owed me forty crowns. I suppose I write that off now.",
+        "m5_halvard": "The pass is open? Then the north road is open. I could kiss you. I will not.",
+        "m8_cinder": "Red sky gone, eh? There go my sunset tours. Not that anyone booked one.",
+        "m10_crown": "Spring prices start tomorrow. Higher. Joy costs extra."
+      }
+    },
+    {
+      "id": "marta",
+      "name": "Marta Quill",
+      "role": "innkeeper",
+      "region": "1,2",
+      "look": {"skin": "#d6a882", "hair": "#8a2f1f", "shirt": "#7a5a3a", "pants": "#3a2e28", "accessory": "apron"},
+      "barks": [
+        "Stew is hot, beds are cold, and the ale is whatever Fennick did not drink.",
+        "Wipe your boots. I do not care what you killed. I care about my floor.",
+        "The Last Wick has never closed. Not for frost, not for the dead, not for Fennick's singing.",
+        "You look like a ghost. Sit. Eat. Then look like a ghost with a full stomach.",
+        "Odo says my prices are robbery. Odo sells rusty spears to children.",
+        "Idris lit every lamp in this Yard. I cooked every supper. Guess who works harder.",
+        "I hear everything in this room. Most of it is lies. The rest is worse."
+      ],
+      "afterLines": {
+        "m1_edgewood": "Edgewood road open? Good. I can get salt again.",
+        "m3_ferry": "Tamsin still rowing? That old heron will outlive us all.",
+        "m7_confession": "I heard shouting from the lamplighter's house. You want stew or a talk? Stew, then.",
+        "m10_crown": "Free drinks tonight. Tonight only. Do not tell Fennick."
+      }
+    },
+    {
+      "id": "aldous",
+      "name": "Father Aldous",
+      "role": "priest",
+      "region": "1,2",
+      "look": {"skin": "#cfa58a", "hair": "#d8d0c0", "shirt": "#3a3a52", "pants": "#26262e", "accessory": "hood"},
+      "barks": [
+        "The gods of Hollowmere are listening. I am fairly sure. I would like to be more sure.",
+        "I have prayed for spring every morning for three winters. I suspect a scheduling problem.",
+        "Bless you. It cannot hurt. I have checked.",
+        "The chapel roof leaks onto the altar. I have decided it is a sign. I have not decided of what.",
+        "If you meet a god out there, ask them to write.",
+        "Faith is a lamp, friend. Mine needs a new wick.",
+        "The dead never enter the chapel. I wish I knew if that was the gods or the draught."
+      ],
+      "afterLines": {
+        "m4_whisper": "The Queen? I gave her the rites myself. I suppose they did not take.",
+        "m6_bells": "Three hundred bells for three hundred souls. And the gods let them ring alone.",
+        "m7_confession": "Idris came to confession. First time in thirty years. I can tell you nothing. Obviously.",
+        "m10_crown": "The dead are at rest. Perhaps that was the gods. Perhaps it was you. I will thank both."
+      }
+    },
+    {
+      "id": "wren",
+      "name": "Wren",
+      "role": "child",
+      "region": "1,2",
+      "look": {"skin": "#e8c4a4", "hair": "#c46a2a", "shirt": "#8aa04a", "pants": "#5a4a3a", "accessory": "none"},
+      "barks": [
+        "Are you a knight? You smell like a knight. Like iron and old soup.",
+        "When I grow up I will light all the lamps. Even the ones in the wood.",
+        "Idris says I am not allowed his wick-hook. I have his wick-hook.",
+        "Do the fire trick again. Do it at Fennick. He is asleep.",
+        "I saw a skeleton once. It waved. I waved back. Was that wrong?",
+        "Marta says eating crusts makes you brave. I eat everyone's crusts.",
+        "Fight me. I am very dangerous. I bite."
+      ],
+      "afterLines": {
+        "m1_edgewood": "Did you fight a hundred bandits? I told everyone it was a hundred.",
+        "m5_halvard": "Was the Unbent knight scary? I would not have been scared. Only a bit.",
+        "m7_confession": "Why is everyone whispering about you? Are you a ghost? Ghosts can still play, right?",
+        "m10_crown": "Idris said I can keep his hook now. I wish he had just let me borrow it."
+      }
+    },
+    {
+      "id": "sedge",
+      "name": "Gorran Sedge",
+      "role": "farmer",
+      "region": "1,2",
+      "look": {"skin": "#b88a62", "hair": "#5a4a32", "shirt": "#8a6a3a", "pants": "#4a5a3a", "accessory": "hat"},
+      "barks": [
+        "Frost on the barley again. You can hear it crack when the sun comes up.",
+        "My scarecrow walked to the well last night. I did not move it. Nobody moved it.",
+        "Thornfield soil is the best in the realm. Ask anyone. Ask the soil.",
+        "A farmer plants in hope and harvests in arguments.",
+        "Three winters with no spring. My cows have forgotten what grass is. So have I.",
+        "Going past the fields? Close the gate. Not for the dead. For the goats.",
+        "My father said never trust a man who will not eat turnips. I have never trusted Odo."
+      ],
+      "afterLines": {
+        "m2_tithe": "Corvin sold my neighbours. He also fed my children last winter. I do not know what to feel.",
+        "m4_whisper": "The frost pulled back from my east field this morning. Only a little. Was that you?",
+        "m10_crown": "Planting tomorrow. First time in three years. I may weep into the furrows."
+      }
+    },
+    {
+      "id": "hesk",
+      "name": "Captain Hesk",
+      "role": "guard",
+      "region": "1,2",
+      "look": {"skin": "#a8785a", "hair": "#2a2a2a", "shirt": "#5a5a62", "pants": "#3a3a40", "accessory": "helmet"},
+      "barks": [
+        "Halt. No, carry on. I just like saying halt.",
+        "The Yard watch is me, two farm boys and a dog. The dog is the best of us.",
+        "Keep your blade sheathed in the Yard. Unless something dead walks in. Then by all means.",
+        "I served at Frostfang under the Unbent. He taught me to stand still. I have been doing it since.",
+        "The lamps hold the line. I stand next to them looking stern.",
+        "Bandits on the road, dead in the wood, and Wren in the armoury again. Busy day.",
+        "If you see a crow with a red plume, that is my helmet's. I want it back."
+      ],
+      "afterLines": {
+        "m1_edgewood": "Road is clear. First time in a year. I will try not to get used to it.",
+        "m5_halvard": "Halvard was the best of us. Thank you for not letting him stand there forever.",
+        "m7_confession": "Captain of the King's guard, eh? Should I salute? I am not going to. Just asking.",
+        "m9_road": "Kneeling dead all along the throne road. Gods. I knew some of those men."
+      }
+    },
+    {
+      "id": "nell",
+      "name": "Nell Ashby",
+      "role": "weaver",
+      "region": "1,2",
+      "look": {"skin": "#dcb494", "hair": "#6a5a4a", "shirt": "#5a3a5a", "pants": "#3a2e3a", "accessory": "shawl"},
+      "barks": [
+        "I keep weaving. If I stop, I start thinking.",
+        "Tam used to sit right there and tangle my yarn. On purpose. Little devil.",
+        "Thornfield wool is the softest in the realm. When there are sheep.",
+        "Mind the loom. It bites worse than Wren.",
+        "Every shawl in the Yard is mine. Every hole in them is Fennick's fault.",
+        "If you see a red-haired boy with his father's chin out there, do not hurt him. Please.",
+        "I made this blue from fen-berries. Tamsin trades them. She drives a hard bargain."
+      ],
+      "afterLines": {
+        "m1_edgewood": "Was there a red-haired boy in those camps? No? Then he is alive somewhere. Good.",
+        "m2_tithe": "Corvin is dead. If Tam was with him, where did he go?",
+        "m10_crown": "Tam is coming home for the planting. I wove him three shawls. He will hate all of them."
+      }
+    },
+    {
+      "id": "fennick",
+      "name": "Fennick Dray",
+      "role": "gravedigger",
+      "region": "1,2",
+      "look": {"skin": "#c49a7a", "hair": "#4a3a2a", "shirt": "#4a4a3a", "pants": "#2e2e26", "accessory": "beard"},
+      "barks": [
+        "Dug the same grave four times this month. Same fellow. He keeps getting up.",
+        "I am not drunk. I am grieving. Professionally.",
+        "Every grave in the Yard is six feet deep. The dead in the wood never had the courtesy.",
+        "Marta and I were married once. It was a short war.",
+        "If I die, bury me face down. If I get up, I will be digging the wrong way.",
+        "Shovel, lantern, flask. A gravedigger's holy trinity.",
+        "The dead are restless because nobody digs properly anymore. Also the King. Mostly the King."
+      ],
+      "afterLines": {
+        "m4_whisper": "Fewer of my customers getting up this week. Business is improving.",
+        "m6_bells": "Three hundred bells. Three hundred graves never dug. That is a lot of overtime.",
+        "m10_crown": "They are lying still. All of them. I can finally finish a job."
+      }
+    },
+    {
+      "id": "moll",
+      "name": "Old Moll",
+      "role": "herbalist",
+      "region": "1,2",
+      "look": {"skin": "#d2aa8a", "hair": "#e8e4dc", "shirt": "#4a6a3a", "pants": "#3a3a2a", "accessory": "shawl"},
+      "barks": [
+        "Frostcap for chills, goldroot for wounds, nettle for people who annoy me.",
+        "Father Aldous drinks my sleep tea every night. Then he says the gods kept him awake.",
+        "Hesk is sweet on Marta. Marta is sweet on Fennick. Fennick is sweet on his flask.",
+        "Eat this. No, do not ask what it is.",
+        "I knew the Queen when she was a girl. She hated mushrooms. Never trust a girl who hates mushrooms.",
+        "The Whisperwood used to grow the best herbs. Now it grows wraiths. Poor yield.",
+        "Seventy winters I have seen. Only three of them were this long."
+      ],
+      "afterLines": {
+        "m3_ferry": "Tamsin knew your face? Tamsin cannot see past the end of her own oar.",
+        "m4_whisper": "Ysolde. Poor lamb. I hope it was quick.",
+        "m7_confession": "I always knew Idris carried something. Nobody lights lamps that carefully unless he is sorry.",
+        "m10_crown": "Frostcap will not grow now the frost is gone. Worth it."
+      }
+    },
+    {
+      "id": "ferryman",
+      "name": "Old Tamsin",
+      "role": "ferrywoman",
+      "region": "0,1",
+      "look": {"skin": "#b48a6a", "hair": "#9a9a9a", "shirt": "#3a4a4a", "pants": "#2a3030", "accessory": "hood"},
+      "barks": [
+        "One coin to cross. Two if you talk. Three if you sing.",
+        "The Fen gives back what it takes. Eventually. Usually missing bits.",
+        "Forty years on this water. I have rowed kings, beggars and one very confused goat.",
+        "Do not lean over the side. Lowmere is down there, and it gets lonely.",
+        "The dead pay in old silver. The living pay in excuses.",
+        "Hear that bell under the water? Ignore it. I always do.",
+        "My oar is older than you. Mind your manners around it."
+      ],
+      "afterLines": {
+        "m3_ferry": "Still looks like your face. I will stop mentioning it. No, I will not.",
+        "m7_confession": "So you were one of them. I rowed you across living. Strange to row you back.",
+        "m10_crown": "No dead to ferry now. Just fish and fools. I prefer the fish."
+      }
+    },
+    {
+      "id": "hermit",
+      "name": "Brother Moss",
+      "role": "hermit",
+      "region": "1,1",
+      "look": {"skin": "#c8a080", "hair": "#7a7a6a", "shirt": "#4a5a3a", "pants": "#3a3a2a", "accessory": "beard"},
+      "barks": [
+        "Shh. The trees are telling me about you. They are not impressed.",
+        "I left the court to study silence. The Whisperwood has been very disappointing.",
+        "Moss on the north side, frost on every side. Navigation is difficult lately.",
+        "I wrote a book on crowns once. Nobody read it. That was the problem.",
+        "The birches whisper the Queen's name. They miss her. So do I.",
+        "Do not eat the blue mushrooms. Do not eat the red ones either. Eat bread.",
+        "A man who forges a crown out of winter should expect a long winter."
+      ],
+      "afterLines": {
+        "m4_whisper": "The Queen is quiet now. The birches are singing again. Very badly.",
+        "m6_bells": "You have read the chronicle. I can see it on you. I copied half of it, you know.",
+        "m10_crown": "The wood is thawing. It drips on me all day. I have never been happier."
+      }
+    },
+    {
+      "id": "hunter",
+      "name": "Kaja Thorne",
+      "role": "hunter",
+      "region": "2,1",
+      "look": {"skin": "#a87050", "hair": "#1a1a1a", "shirt": "#6a4a2a", "pants": "#3a3a30", "accessory": "hood"},
+      "barks": [
+        "Tracks in the snow say three brutes and one very lost rabbit.",
+        "Stay downwind. The dead cannot smell you, but I can.",
+        "My father hunted this pass. His father too. None of us ever caught a warm day.",
+        "Wraiths leave no tracks. That is how I know they are cheating.",
+        "Halvard let me pass every morning. Never said a word. Never once looked at me.",
+        "Eat when you can, sleep when you can, run when I say.",
+        "The aurora is green tonight. My father said green means the King is sleeping."
+      ],
+      "afterLines": {
+        "m5_halvard": "Halvard is down? I left bread at his post every morning. He never ate it.",
+        "m8_cinder": "The snow is softer this week. Wet. Like it remembers how to melt.",
+        "m10_crown": "The pass is thawing. Now I have to learn to track in mud. Ugh."
+      }
+    }
+  ],
+  "sidequests": [
+    {
+      "id": "sq_scarecrow",
+      "giver": "sedge",
+      "title": "The Scarecrow Walks",
+      "type": "boss",
+      "params": {
+        "region": "0,2",
+        "boss": {
+          "name": "Old Straw",
+          "type": "skeleton",
+          "taunt": ["Gorran? Gorran, you left the gate open again.", "These fields are mine. I am still working them."],
+          "deathLine": "Tell the boy to plant the barley deep. Frost cannot reach deep."
+        }
+      },
+      "minLevel": 1,
+      "offerLines": [
+        "My scarecrow walks at night. Up and down the east field, like it is checking the rows.",
+        "I made it from my father's coat after we buried him out there. Do not say what you are thinking.",
+        "Put it down for me. Gently, if you can. It still carries his woodaxe."
+      ],
+      "progressLine": "It walks the east field of Thornfield. You will know it by the coat.",
+      "doneLines": [
+        "It was him, was it not. Still checking the rows.",
+        "Keep the axe. He would rather it chopped something than rusted in a field.",
+        "Plant deep. He used to say that. I had forgotten."
+      ],
+      "reward": {"xp": 120, "gold": 30, "weapon": "axe"}
+    },
+    {
+      "id": "sq_tam1",
+      "giver": "nell",
+      "title": "A Boy in the Edgewood",
+      "type": "fetch",
+      "params": {"item": "Tam's carved fox", "region": "2,2"},
+      "minLevel": 1,
+      "offerLines": [
+        "My Tam ran off to the Edgewood bandits last autumn. Said he would send grain home. He did, twice.",
+        "He carved a little wooden fox for luck. He never went anywhere without it.",
+        "If it is still out there, so is he. Or so was he. Please. Find it."
+      ],
+      "progressLine": "Tam's carved fox is somewhere in the Edgewood. It is small. Look near the old camps.",
+      "doneLines": [
+        "That is his. He scratched something on the base. Gone to the Fen. Do not worry. Ha. Do not worry.",
+        "He is alive. Or he was, when he wrote it. That is more than I had this morning."
+      ],
+      "reward": {"xp": 100, "gold": 20}
+    },
+    {
+      "id": "sq_tam2",
+      "requires": "sq_tam1",
+      "giver": "nell",
+      "title": "A Letter for the Ferry",
+      "type": "deliver",
+      "params": {"to": "ferryman", "item": "Nell's letter"},
+      "minLevel": 2,
+      "offerLines": [
+        "If he went to the Fen, Tamsin will know. Nobody crosses that water without her seeing.",
+        "Take her this letter for him. Tell him nobody is angry. Lie, if you must."
+      ],
+      "progressLine": "Bring Nell's letter to Old Tamsin at the Black Water ferry.",
+      "doneSpeaker": "ferryman",
+      "doneLines": [
+        "A letter for Tam? Red hair, all elbows? He has been bailing my boat since the granary fell.",
+        "He walked out on Corvin the night they sold folk to the dead. Good lad. Bad at bailing.",
+        "I will give it to him. Tell his mother he eats. Tell her he is coming home in spring."
+      ],
+      "reward": {"xp": 180, "gold": 40, "skillPoint": 1}
+    },
+    {
+      "id": "sq_wren",
+      "giver": "wren",
+      "title": "Da's Lamp-Hook",
+      "type": "fetch",
+      "params": {"item": "a brass lamp-hook marked W", "region": "0,2"},
+      "minLevel": 1,
+      "offerLines": [
+        "My da was Idris's apprentice. He went to light the Thornfield road lamps and did not come back.",
+        "His brass hook is still out there. It has a W on it. For Wren. He scratched it himself.",
+        "If I have it I am a real lamplighter. Idris cannot say no to a real lamplighter."
+      ],
+      "progressLine": "Wren's father fell on the Thornfield road. Look for a brass hook with a W on it.",
+      "doneLines": [
+        "That is it. That is his. It is heavier than I thought.",
+        "Here. Three coppers and a drawing of you. It is a good drawing. You have a big nose in it."
+      ],
+      "reward": {"xp": 80, "gold": 3, "skillPoint": 1}
+    },
+    {
+      "id": "sq_marta",
+      "giver": "marta",
+      "title": "Supper for a Stubborn Man",
+      "type": "deliver",
+      "params": {"to": "fennick", "item": "a pot of hot stew"},
+      "minLevel": 1,
+      "offerLines": [
+        "Fennick has not come in from the graveyard in two days. The fool will freeze out there.",
+        "Take him this stew. Do not tell him it is from me. Tell him it fell off a cart."
+      ],
+      "progressLine": "Bring Marta's stew to Fennick at the graveyard before it goes cold.",
+      "doneSpeaker": "fennick",
+      "doneLines": [
+        "Fell off a cart, did it. With my name chalked on the lid. In her hand.",
+        "She still puts the bay leaf in. She knows I hate the bay leaf. She knows I eat it anyway.",
+        "Tell her thank you. No. Tell her it was too salty. She will know what I mean."
+      ],
+      "reward": {"xp": 60, "gold": 15}
+    },
+    {
+      "id": "sq_doubt1",
+      "giver": "aldous",
+      "title": "The Candle in the Wood",
+      "type": "fetch",
+      "params": {"item": "the shrine candle of First Light", "region": "1,1"},
+      "minLevel": 2,
+      "offerLines": [
+        "There is a shrine in the Whisperwood where I first heard the gods. Its candle never went out.",
+        "If it still burns after three winters of frost, I will believe again. If it is dark, I will know.",
+        "Bring me whatever you find. Do not tell me first. Let me see it myself."
+      ],
+      "progressLine": "Find the candle at the old shrine in the Whisperwood and bring it to Father Aldous.",
+      "doneLines": [
+        "It is lit. Three winters, no keeper, and it is still lit.",
+        "Of course, Moll says it is half beeswax. That would explain a great deal.",
+        "No. I will take it. A man may choose to be a fool about the right things."
+      ],
+      "reward": {"xp": 200, "gold": 50, "skillPoint": 1}
+    },
+    {
+      "id": "sq_doubt2",
+      "requires": "sq_doubt1",
+      "giver": "aldous",
+      "title": "The Unquiet Congregation",
+      "type": "kill",
+      "params": {"enemy": "wraith", "count": 6, "region": "any"},
+      "minLevel": 5,
+      "offerLines": [
+        "The wraiths that drift through the wood and the keep. Some of them sang in my choir.",
+        "I could not save them living. Now a prayer needs a blade behind it.",
+        "Put six of them to rest. The chapel's old mace is yours when you do. It has hung on my altar too long."
+      ],
+      "progressLine": "Lay six wraiths to rest, wherever they drift. Father Aldous prays for each one.",
+      "doneLines": [
+        "Six. I rang the chapel bell for each of them. Someone should.",
+        "Take the mace. Brother Halric carried it through the plague years. Use it on the right things."
+      ],
+      "reward": {"xp": 400, "gold": 80, "weapon": "mace"}
+    },
+    {
+      "id": "sq_hermit",
+      "giver": "hermit",
+      "title": "Quiet the Wood",
+      "type": "clear",
+      "params": {"region": "1,1"},
+      "minLevel": 3,
+      "offerLines": [
+        "The Whisperwood is too loud. The dead crash through the ferns and argue with the trees.",
+        "I came here for silence. Clear them out, and I will tell you a story about a crown."
+      ],
+      "progressLine": "Clear the dead from the Whisperwood so Brother Moss can hear himself think.",
+      "doneLines": [
+        "Ah. Silence. Or nearly. The birches are humming.",
+        "The story. A lamplighter once asked me how to forge winter. I told him. I have been sorry since.",
+        "I am not the one who owes you the rest of it. He is."
+      ],
+      "reward": {"xp": 250, "gold": 60, "skillPoint": 1}
+    },
+    {
+      "id": "sq_hunter",
+      "giver": "hunter",
+      "title": "The Dogs of Frostfang",
+      "type": "kill",
+      "params": {"enemy": "brute", "count": 3, "region": "2,1"},
+      "minLevel": 4,
+      "offerLines": [
+        "Three brutes came down the ridge last month and took my dogs. All five of them.",
+        "I named every one of those dogs. Badly, but I named them.",
+        "Kill the three, and I will give you my father's boar spear. It has more reach than your temper."
+      ],
+      "progressLine": "Hunt three brutes on Frostfang Pass for Kaja. She is counting.",
+      "doneLines": [
+        "Three. Good. I will not pretend it brings back Mutt, or Other Mutt.",
+        "Take the spear. Keep the point low and let them come onto it. That is all hunting is."
+      ],
+      "reward": {"xp": 350, "gold": 70, "weapon": "spear"}
+    },
+    {
+      "id": "sq_forge1",
+      "giver": "bryn",
+      "title": "Star-Iron",
+      "type": "fetch",
+      "params": {"item": "a lump of star-iron", "region": "2,1"},
+      "minLevel": 4,
+      "offerLines": [
+        "Before the war I started a greatsword for my husband Teodor. He marched before I finished it.",
+        "It needs star-iron. A piece of fallen star lies somewhere on Frostfang Pass. Bring me a chunk."
+      ],
+      "progressLine": "Find star-iron on Frostfang Pass and bring it to Bryn at the forge.",
+      "doneLines": [
+        "That is the stuff. Feel how cold it is. It drinks the heat out of your hand.",
+        "That is the edge. Next it needs a guard. Come back when you are ready for Ashgrave."
+      ],
+      "reward": {"xp": 300, "gold": 60}
+    },
+    {
+      "id": "sq_forge2",
+      "requires": "sq_forge1",
+      "giver": "bryn",
+      "title": "Bell-Bronze",
+      "type": "fetch",
+      "params": {"item": "a shard of Teodor's bell", "region": "0,0"},
+      "minLevel": 6,
+      "offerLines": [
+        "Every soldier who fell on the Vale road got a bell at Ashgrave. Teodor has one.",
+        "Bring me a shard of it. The bronze will make the guard. He will be in the sword, then. Somehow.",
+        "Do not look at me like that. Smiths may be sentimental. It is in the guild charter."
+      ],
+      "progressLine": "Find Teodor Hallow's bell in Ashgrave Keep and bring Bryn a shard of it.",
+      "doneLines": [
+        "His name is still on it. Teodor Hallow, third rank. He hated the third rank. Said it smelled of the second.",
+        "One thing left. Star-iron needs real fire to temper, and only one real fire is left. The Cinder Vale."
+      ],
+      "reward": {"xp": 450, "gold": 90, "skillPoint": 1}
+    },
+    {
+      "id": "sq_forge3",
+      "requires": "sq_forge2",
+      "giver": "bryn",
+      "title": "The Kiln of the Vale",
+      "type": "boss",
+      "params": {
+        "region": "1,0",
+        "boss": {
+          "name": "Gorm the Kilnheart",
+          "type": "brute",
+          "taunt": ["A smith's errand-runner. I am the forge now.", "Come closer. Let me temper you."],
+          "deathLine": "Cold. Finally cold. I was so tired of burning."
+        }
+      },
+      "minLevel": 8,
+      "offerLines": [
+        "A brute crawled into the old army kiln in the Cinder Vale and came out burning.",
+        "Kill it. What is left of its fire will temper Teodor's sword. Then the sword is yours."
+      ],
+      "progressLine": "Kill Gorm the Kilnheart in the Cinder Vale so Bryn can temper the greatsword.",
+      "doneLines": [
+        "There. Star-iron edge, bell-bronze guard, tempered in the last fire in the realm.",
+        "It was his. Now it is yours. He would rather it was swung than hung on a wall.",
+        "Bring it back nicked and I will be very, very angry. Go on."
+      ],
+      "reward": {"xp": 800, "gold": 150, "weapon": "greatsword"}
+    }
+  ],
+  "deathLines": [
+    "The cold takes you. The lamp gutters, but it does not go out.",
+    "Down in the frost again. Get up. The dead do not get to keep you twice.",
+    "I have watched better fighters fall and stay down. Do not be one of them.",
+    "The Hollow King keeps what he takes. Not you. Not while I have oil.",
+    "Breathe. Even if you do not need to. It helps."
+  ],
+  "levelUpLines": [
+    "You are getting quicker. The dead will notice.",
+    "Well struck. Halvard would have nodded. He never nodded.",
+    "Stronger. I can see it in how you stand.",
+    "Good. Now spend it on something that keeps you alive.",
+    "Your flame burns brighter. Careful. Bright things draw moths."
+  ],
+  "ending": [
+    "The crown broke like river ice in spring, and the cold went out of Hollowmere in one long breath.",
+    "Across the realm the dead lay down. Halvard's men, the Queen's wraith, the soldiers of the Vale road. All of them, at last.",
+    "You should have fallen with them. Idris knew that. He had always known.",
+    "He pressed his lantern to your chest and gave you the last of his flame. It was the only light he had left.",
+    "They buried the lamplighter in the Lantern Yard, under the first lamp he ever lit.",
+    "Thornfield planted in the spring. Wren lights the lamps now, badly, with a brass hook marked W.",
+    "Some nights you feel his flame turn over in your chest, like an old man settling down to sleep.",
+    "Hollowmere is thawing. The road is yours."
+  ],
+  "credits": "Hollowmere: The Cold Crown. For the lamplighters, and everyone who kept a light on."
+};
+/* villagers: one body per STORY2 npc (villagerGeo, same bone layout as bodyGeo), wander/idle/chat AI, bark bubbles, quest markers, dialogue/shop panels.
+   quests: SAVE.quests={active:{id:{n,got,killed}},done:[ids]}; hooks questOnKill(enemy) and questOnRegion(R) are called by the combat / travel code. */
+SAVE.main=SAVE.main||[];SAVE.quests=SAVE.quests||{active:{},done:[]};
+PROG.sharpMul=id=>(SAVE.prog.sharp&&SAVE.prog.sharp[id])||1;
+const NPC_AT={},SQ_AT={};for(const n of STORY2.npcs)NPC_AT[n.id]=n;for(const q of STORY2.sidequests)SQ_AT[q.id]=q;
+const VROLE={lamplighter:{hair:'swept',prop:'lamp',old:1},blacksmith:{hair:'crop',bulk:1.16,prop:'hammer',kind:'smith'},merchant:{hair:'short',belly:1,satchel:1,kind:'shop'},
+ innkeeper:{hair:'bun',dress:1},priest:{hair:'bald',robe:1,pendant:1},child:{hair:'tufts',scale:.68,speed:1.35},farmer:{hair:'short',straw:1},guard:{hair:'crop',prop:'spear',tabard:1,kind:'guard'},
+ weaver:{hair:'long',dress:1},gravedigger:{hair:'shaggy',prop:'shovel',hunch:.14},herbalist:{hair:'bun',dress:1,hunch:.2,prop:'stick',old:1},ferrywoman:{hair:'long',dress:1,prop:'pole',kind:'stay'},
+ hermit:{hair:'bald',robe:1,prop:'staff',old:1,kind:'stay'},hunter:{hair:'tail',bow:1,kind:'stay'}};
+const vShade=(c,f)=>'#'+new COL(c).multiplyScalar(f).getHexString(),vMix=(a,b,t)=>'#'+new COL(a).lerp(new COL(b),t).getHexString();
+function villagerGeo(look,role){
+ const L=VROLE[role]||{},T={},GL={},C=THREE;const add=(k,g)=>{(T[k]=T[k]||[]).push(g);},glow=(k,g)=>{(GL[k]=GL[k]||[]).push(g);};
+ const sk=look.skin,hr=look.hair,sh=look.shirt,pa=look.pants,acc=look.accessory,bw=L.bulk||1,long=L.dress||L.robe;
+ const boots=L.robe?'#5a4430':'#3a2a1e',lum=new COL(hr).getHSL({}).l,style=L.hair||(lum>.6?'bald':lum<.2?'crop':'short');
+ /* hips: trousers top, then a tunic hem or a long dress/robe skirt */
+ add('hips',G(new C.CylinderGeometry(.135*bw,.145*bw,.2,8),pa,{p:[0,.02,0],s:[1,1,.75]}));
+ if(long)add('hips',G(new C.CylinderGeometry(.15*bw,L.robe?.26:.3,L.robe?.86:.78,10,1,true),L.robe?sh:vShade(sh,.9),{p:[0,L.robe?-.36:-.32,0],s:[1,1,.8],warp:.008}));
+ else add('hips',G(new C.CylinderGeometry(.15*bw,.185*bw,.24,8,1,true),sh,{p:[0,-.06,0],s:[1,1,.78]}));
+ /* torso */
+ add('torso',G(new C.CylinderGeometry(.165*bw,.128*bw,.5,8,2),sh,{p:[0,.29,0],s:[1,1,.72],warp:.004}));
+ add('torso',G(new C.CylinderGeometry(.092,.1,.06,7),vShade(sh,.85),{p:[0,.56,0]}));
+ add('torso',G(new C.CylinderGeometry(.134*bw,.134*bw,.045,8),L.robe?'#c8b080':'#3a2a1c',{p:[0,.07,0],s:[1,1,.74]}));
+ if(!L.robe)add('torso',G(new C.BoxGeometry(.04,.035,.02),'#a08a50',{p:[0,.07,.1*bw]}));
+ if(L.belly)add('torso',G(new C.SphereGeometry(.15,8,5),sh,{p:[0,.17,.035],s:[1.08,.92,.86]}));
+ if(acc==='apron'){const ac=role==='blacksmith'?'#5a3a22':'#e6dcc8';add('torso',G(new C.BoxGeometry(.24*bw,.34,.02),ac,{p:[0,.25,.1*bw]}));add('hips',G(new C.BoxGeometry(.27*bw,.42,.02),ac,{p:[0,-.17,long?.17:.125*bw],r:[long?-.12:0,0,0]}));}
+ if(acc==='shawl')add('torso',G(new C.ConeGeometry(.25*bw,.34,9,1,true),vMix(sh,'#c8b090',.45),{p:[0,.46,0],s:[1,1,.8],warp:.01}));
+ if(acc==='hood'){const hc=vShade(sh,.78);add('torso',G(new C.ConeGeometry(.25,.3,9,1,true),hc,{p:[0,.47,0],s:[1,1,.8]}));add('head',G(new C.ConeGeometry(.155,.31,8,1,true),hc,{p:[0,.24,-.03],r:[-.15,0,0]}));}
+ if(L.tabard){add('torso',G(new C.BoxGeometry(.22,.52,.02),'#7a2a2a',{p:[0,.2,.105]}));add('torso',G(new C.BoxGeometry(.22,.52,.02),'#7a2a2a',{p:[0,.2,-.105]}));add('torso',G(new C.OctahedronGeometry(.035,0),'#e0b040',{p:[0,.32,.118]}));}
+ if(L.satchel){add('torso',G(new C.BoxGeometry(.03,.62,.012),'#4a3020',{p:[0,.28,.105],r:[0,0,.62]}));add('torso',G(new C.BoxGeometry(.03,.62,.012),'#4a3020',{p:[0,.28,-.105],r:[0,0,-.62]}));
+  add('hips',G(new C.BoxGeometry(.06,.13,.16),'#6a4a2a',{p:[.19,-.02,0]}));add('hips',G(new C.BoxGeometry(.065,.05,.165),'#5a3a20',{p:[.19,.05,0]}));add('torso',G(new C.IcosahedronGeometry(.04,0),'#b08a3a',{p:[-.1,.03,.09]}));}
+ if(L.pendant)add('torso',G(new C.BoxGeometry(.03,.05,.012),'#e0c060',{p:[0,.42,.125]}));
+ if(L.bow){add('torso',G(new C.CylinderGeometry(.05,.045,.42,6),'#5a3a24',{p:[.08,.34,-.14],r:[0,0,.3]}));for(let i=0;i<3;i++)add('torso',G(new C.CylinderGeometry(.005,.005,.12,3),'#e8e0d0',{p:[.15+i*.018,.58,-.14],r:[0,0,.3]}));
+  add('torso',G(new C.TorusGeometry(.42,.012,3,12,Math.PI*.75),'#6a4a2a',{p:[-.02,.15,-.15],r:[0,Math.PI/2,Math.PI*.62]}));}
+ /* head: neck, skull, jaw, nose, ears, eyes, brows, mouth */
+ add('head',G(new C.CylinderGeometry(.045,.052,.18,7),sk,{p:[0,0,0]}));
+ add('head',G(new C.IcosahedronGeometry(.105,1),sk,{p:[0,.17,0],s:[.93,1.08,1]}));
+ add('head',G(new C.BoxGeometry(.085,.05,.075),sk,{p:[0,.075,.035]}));
+ add('head',G(new C.ConeGeometry(.017,.05,4),vShade(sk,.95),{p:[0,.15,.112],r:[Math.PI/2,0,0]}));
+ for(const s of[-1,1]){add('head',G(new C.BoxGeometry(.02,.04,.03),vShade(sk,.92),{p:[s*.098,.16,0]}));
+  add('head',G(new C.BoxGeometry(.027,.016,.01),'#efe9dc',{p:[s*.038,.186,.097]}));add('head',G(new C.BoxGeometry(.012,.015,.01),'#1a120c',{p:[s*.038,.186,.102]}));
+  add('head',G(new C.BoxGeometry(.045,.012,.02),vShade(hr,.85),{p:[s*.04,.212,.096],r:[0,0,-s*.12]}));}
+ add('head',G(new C.BoxGeometry(.04,.008,.01),vShade(sk,.62),{p:[0,.108,.098]}));
+ /* hair, then the accessory */
+ const cap=(sy=1,w=0)=>add('head',G(new C.SphereGeometry(.113,9,5,0,TAU,0,Math.PI*.5),hr,{p:[0,.175,-.006],s:[.96,sy,1.04],r:[-.22,0,0],warp:w}));
+ if(acc!=='helmet'){
+  if(style==='bald')add('head',G(new C.TorusGeometry(.098,.028,4,10,Math.PI*1.2),hr,{p:[0,.15,-.005],r:[-Math.PI/2,0,-Math.PI*.1]}));
+  else cap(style==='crop'?.85:1,style==='shaggy'||style==='tufts'?.018:0);
+  if(style==='short')add('head',G(new C.BoxGeometry(.15,.035,.04),hr,{p:[0,.255,.08],r:[.3,0,0]}));
+  if(style==='swept')add('head',G(new C.BoxGeometry(.17,.12,.08),hr,{p:[0,.17,-.07]}));
+  if(style==='bun')add('head',G(new C.IcosahedronGeometry(.055,1),hr,{p:[0,.25,-.09]}));
+  if(style==='long'){add('head',G(new C.BoxGeometry(.19,.3,.07),hr,{p:[0,.1,-.075],warp:.008}));for(const s of[-1,1])add('head',G(new C.BoxGeometry(.035,.2,.07),hr,{p:[s*.098,.13,-.01]}));}
+  if(style==='tail')add('head',G(new C.CylinderGeometry(.03,.012,.26,5),hr,{p:[0,.12,-.13],r:[.45,0,0]}));
+  if(style==='tufts')for(let i=0;i<5;i++)add('head',G(new C.ConeGeometry(.025,.07,4),hr,{p:[Math.cos(i*1.3)*.06,.29,Math.sin(i*1.3)*.05-.01],r:[Math.sin(i)*.5,0,Math.cos(i)*.5]}));
+  if(style==='shaggy')for(const s of[-1,1])add('head',G(new C.BoxGeometry(.04,.12,.09),hr,{p:[s*.095,.16,-.03],warp:.01}));}
+ if(acc==='beard'){add('head',G(new C.IcosahedronGeometry(.075,1),hr,{p:[0,.08,.055],s:[1,1.1,.75],warp:.006}));add('head',G(new C.BoxGeometry(.075,.02,.02),hr,{p:[0,.122,.104]}));
+  if(L.robe)add('head',G(new C.ConeGeometry(.065,.24,7),hr,{p:[0,-.02,.08],r:[Math.PI+.25,0,0]}));}
+ if(acc==='hat'){if(L.straw){add('head',G(new C.ConeGeometry(.27,.1,12),'#c8b070',{p:[0,.29,0]}));add('head',G(new C.CylinderGeometry(.09,.1,.09,10),'#b8a060',{p:[0,.32,0]}));}
+  else{add('head',G(new C.CylinderGeometry(.17,.17,.02,12),'#2a2420',{p:[0,.27,0]}));add('head',G(new C.CylinderGeometry(.095,.105,.13,10),'#2a2420',{p:[0,.34,0]}));add('head',G(new C.CylinderGeometry(.107,.107,.03,10),'#8a2a2a',{p:[0,.29,0]}));}}
+ if(acc==='helmet'){add('head',G(new C.SphereGeometry(.126,10,5,0,TAU,0,Math.PI/2),'#8a9098',{p:[0,.19,0]}));add('head',G(new C.CylinderGeometry(.13,.13,.03,12),'#6a7078',{p:[0,.19,0]}));
+  add('head',G(new C.BoxGeometry(.022,.09,.02),'#8a9098',{p:[0,.17,.122]}));add('head',G(new C.ConeGeometry(.02,.08,5),'#a8323a',{p:[0,.33,-.02]}));}
+ /* limbs: sleeves, forearms, hands with thumb + curled fingers, legs, shoes */
+ const sleeve=long||acc==='shawl'||acc==='hood';
+ for(const s of['L','R']){const sx=s==='L'?1:-1;
+  add('uarm'+s,G(new C.CylinderGeometry(.05*bw,.042*bw,.3,7),sh,{p:[0,-.15,0]}));
+  add('farm'+s,G(new C.CylinderGeometry(.04*bw,.032*bw,.27,7),sleeve?sh:sk,{p:[0,-.135,0]}));
+  if(!sleeve)add('farm'+s,G(new C.CylinderGeometry(.048*bw,.046*bw,.06,7),vShade(sh,.9),{p:[0,-.02,0]}));
+  add('farm'+s,G(new C.BoxGeometry(.05,.075,.028),sk,{p:[0,-.31,0]}));add('farm'+s,G(new C.BoxGeometry(.046,.045,.024),vShade(sk,.95),{p:[0,-.365,.01],r:[.3,0,0]}));
+  add('farm'+s,G(new C.BoxGeometry(.016,.042,.018),sk,{p:[sx*.024,-.3,.02],r:[0,0,-sx*.35]}));
+  add('thigh'+s,G(new C.CylinderGeometry(.066*bw,.054*bw,.45,7),pa,{p:[0,-.225,0]}));
+  add('shin'+s,G(new C.CylinderGeometry(.052,.042,.43,7),pa,{p:[0,-.215,0]}));
+  add('shin'+s,G(new C.BoxGeometry(.075,.07,.11),boots,{p:[0,-.42,-.005]}));add('shin'+s,G(new C.BoxGeometry(.07,.045,.13),boots,{p:[0,-.445,.06]}));}
+ /* role props, held upright in the right hand */
+ const stick=(len,cy,col,r=.018)=>add('farmR',G(new C.CylinderGeometry(r,r,len,5),col,{p:[0,cy,.012]}));
+ if(L.prop==='hammer'){stick(.34,-.43,'#5a4030');add('farmR',G(new C.BoxGeometry(.13,.065,.065),'#4a4c52',{p:[0,-.6,.012]}));}
+ if(L.prop==='spear'){stick(2.0,.12,'#6a4a30',.016);add('farmR',G(new C.ConeGeometry(.03,.2,5),'#b8bcc4',{p:[0,1.22,.012]}));}
+ if(L.prop==='shovel'){stick(1.15,-.15,'#6a4a30');add('farmR',G(new C.BoxGeometry(.15,.2,.02),'#6a6c70',{p:[0,-.82,.012]}));}
+ if(L.prop==='stick')stick(.98,-.62,'#5a4030',.015);
+ if(L.prop==='staff'){stick(1.75,.02,'#5a4a30',.022);add('farmR',G(new C.IcosahedronGeometry(.045,0),'#5a4a30',{p:[0,.9,.012]}));}
+ if(L.prop==='pole')stick(2.3,.3,'#4a3a2a',.02);
+ if(L.prop==='lamp'){stick(1.9,.12,'#3c2c20',.017);add('farmR',G(new C.BoxGeometry(.02,.02,.3),'#3c2c20',{p:[0,1.05,.15]}));add('farmR',G(new C.CylinderGeometry(.045,.055,.12,6),'#2a2a2a',{p:[0,.93,.29]}));
+  add('farmR',G(new C.ConeGeometry(.06,.05,6),'#2a2a2a',{p:[0,1.01,.29]}));glow('farmR',G(new C.OctahedronGeometry(.04,0),'#ffd070',{p:[0,.93,.29]}));}
+ const m={},g={};for(const k in T)m[k]=merge(T[k]);for(const k in GL)g[k]=merge(GL[k]);return{m,g};}
+const VGEO={};
+function buildVillager(n){const L=VROLE[n.role]||{},bw=L.bulk||1,geos=VGEO[n.id]||(VGEO[n.id]=villagerGeo(n.look,n.role));
+ const N={};const node=(k,parent,x,y,z)=>{const o=new THREE.Group();o.position.set(x,y,z);parent.add(o);N[k]=o;if(geos.m[k])o.add(new THREE.Mesh(geos.m[k],MAT_CHAR));if(geos.g[k])o.add(new THREE.Mesh(geos.g[k],MAT_GLOW));return o;};
+ const root=new THREE.Group();const hips=node('hips',root,0,.95,0),torso=node('torso',hips,0,0,0),head=node('head',torso,0,.58,0);
+ for(const[sd,x]of[['L',-1],['R',1]]){const s=node('sh'+sd,torso,x*.195*bw,.5,0),ua=node('uarm'+sd,s,0,0,0);node('farm'+sd,ua,0,-.3,0);const th=node('thigh'+sd,hips,x*.095*bw,0,0);node('shin'+sd,th,0,-.45,0);}
+ if(n.role==='child')head.scale.setScalar(1.22);const s=L.scale||1;root.scale.setScalar(s);return{root,N,s,L};}
+
+/* ---------- world props for the hub: forge by the rack, market stall, well ---------- */
+const VPOS={forge:[-7.6,-6.4],stall:[3.6,8.4],well:[-8.6,5],board:[-2.7,-8.3]};
+function vilProps(g){const add=(geo,x,z,ry,mat=MAT)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,floorY(x,z),z);m.rotation.y=ry;g.add(m);return m;};const C=THREE;
+ let [x,z]=VPOS.forge;add(merge([G(new C.BoxGeometry(.5,.5,.4),'#4a3a2a',{p:[0,.25,0]}),G(new C.BoxGeometry(.6,.14,.24),'#3a3c42',{p:[0,.57,0]}),G(new C.ConeGeometry(.08,.22,4),'#3a3c42',{p:[.38,.57,0],r:[0,0,-Math.PI/2]}),
+  G(new C.CylinderGeometry(.55,.65,.8,8),'#6a625a',{p:[1.3,.4,.6],warp:.03}),G(new C.CylinderGeometry(.5,.5,.06,8),'#2a2420',{p:[1.3,.82,.6]})]),x,z,.6);
+ add(G(new C.DodecahedronGeometry(.32,0),'#ff7a2a',{p:[0,.92,0],s:[1,.35,1]}),x+Math.cos(.6)*1.3+Math.sin(.6)*.6,z-Math.sin(.6)*1.3+Math.cos(.6)*.6,0,MAT_GLOW);colliders.push({x,z,r:.5},{x:x+1.4,z:z-.4,r:.7});
+ [x,z]=VPOS.stall;const ry=Math.atan2(-x,-z);add(merge([G(new C.BoxGeometry(2.2,.9,.7),'#6a4a30',{p:[0,.45,0]}),G(new C.BoxGeometry(2.3,.06,.8),'#4a3424',{p:[0,.92,0]}),
+  ...[-1.05,1.05].flatMap(px=>[G(new C.BoxGeometry(.08,2.3,.08),'#4a3424',{p:[px,1.15,-.55]}),G(new C.BoxGeometry(.08,1.9,.08),'#4a3424',{p:[px,.95,.35]})]),
+  G(new C.BoxGeometry(2.5,.05,1.3),'#a8323a',{p:[0,2.15,-.12],r:[-.3,0,0]}),G(new C.BoxGeometry(.3,.2,.3),'#8a6a3a',{p:[-.6,1.05,0]}),G(new C.IcosahedronGeometry(.12,0),'#d8a040',{p:[.1,1.03,.05]}),
+  G(new C.IcosahedronGeometry(.1,0),'#7a9a3a',{p:[.35,1.02,-.1]}),G(new C.CylinderGeometry(.1,.1,.22,7),'#5a6a7a',{p:[.75,1.06,0]})]),x,z,ry);colliders.push({x,z,r:1.2});
+ [x,z]=VPOS.well;add(merge([G(new C.CylinderGeometry(.8,.85,.75,10,1,true),'#7a7670',{p:[0,.37,0],warp:.03}),G(new C.TorusGeometry(.8,.09,4,10),'#6a6660',{p:[0,.75,0],r:[Math.PI/2,0,0]}),
+  ...[-1,1].map(s=>G(new C.BoxGeometry(.1,1.6,.1),'#4a3424',{p:[s*.8,.8,0]})),G(new C.ConeGeometry(1.15,.6,4),'#6a3a2a',{p:[0,1.85,0],r:[0,Math.PI/4,0]}),G(new C.CylinderGeometry(.6,.6,.04,10),'#1a2a3a',{p:[0,.5,0]})]),x,z,.3);colliders.push({x,z,r:1});}
+
+/* ---------- villager runtime ---------- */
+const VIL={list:[],group:null,region:null,pickups:[],poi:[],markT:0,hq:null,dlgV:null};
+const _vv=new V3(),_vw=new V3(),_vd=new V3();
+function vilClear(){if(VIL.group&&VIL.group.parent)scene.remove(VIL.group);VIL.group=null;VIL.list=[];VIL.pickups=[];VIL.region=null;for(const b of VBUB)b.v=null,b.p.mesh.visible=false;vDlgClose();}
+function vilFree(x,z,pad=.6){return !colliders.some(c=>Math.hypot(x-c.x,z-c.z)<c.r+pad);}
+function vilSpot(seed,r0,r1,roadPad=4){const b=(vh(seed)%628)/100;for(let k=0;k<40;k++){const a=b+k*.71,r=r0+(k%4)*(r1-r0)/3,x=Math.cos(a)*r,z=Math.sin(a)*r;if(roadD(x,z)>roadPad&&vilFree(x,z,1))return new V3(x,0,z);}return new V3(r0,0,0);}
+function vh(s){let h=7;for(const c of String(s))h=(h*31+c.charCodeAt(0))>>>0;return h;}
+/* spawn the region's villagers (idempotent per region); hub gets the forge, stall and well. npc holds the group so travelTo's cleanup removes it */
+function spawnVillagers(rid){if(VIL.group&&VIL.region===rid&&npc&&npc.root===VIL.group)return;vilClear();
+ const R=REGION_AT[rid],g=new THREE.Group();g.name='villagers';VIL.group=g;VIL.region=rid;scene.add(g);npc={root:g};
+ const hub=!!R.hub;if(hub)vilProps(g);
+ VIL.poi=[];if(hub){for(const c of colliders)if(c.r===3.1){const l=Math.hypot(c.x,c.z);VIL.poi.push([c.x*(1-4.3/l),c.z*(1-4.3/l)]);}
+  for(let i=0;i<5;i++){const a=i/5*TAU;VIL.poi.push([Math.cos(a)*2.6,Math.sin(a)*2.6]);}VIL.poi.push([VPOS.well[0]+1.5,VPOS.well[1]],[VPOS.stall[0]-.8,VPOS.stall[1]-2],[-2.5,4],[6,3]);
+  for(const rd of W.roads)for(const t of[11,16]){roadPt(rd,t,_vv);VIL.poi.push([_vv.x-rd.dz*1.6,_vv.z+rd.dx*1.6]);}}
+ VIL.poi=VIL.poi.filter(([x,z])=>vilFree(x,z,.5));
+ const list=STORY2.npcs.filter(n=>n.region===rid);
+ list.forEach((n,i)=>{const b=buildVillager(n);g.add(b.root);const L=b.L;let kind=L.kind||'wander';if(n.id==='idris')kind='mentor';if(!hub)kind='stay';
+  let home;if(kind==='smith')home=new V3(VPOS.forge[0]+.9,0,VPOS.forge[1]+.6);else if(kind==='shop'){const[x,z]=VPOS.stall,l=Math.hypot(x,z);home=new V3(x+x/l*.9,0,z+z/l*.9);}else if(kind==='mentor')home=new V3(...[VPOS.board[0],0,VPOS.board[1]]);
+  else if(kind==='stay')home=vilSpot(n.id,5,8,3);else{const p=VIL.poi[(i*3)%VIL.poi.length]||[i,4];home=new V3(p[0],0,p[1]);}
+  const v={d:n,...b,kind,home:home.clone(),pos:home.clone(),yaw:Math.atan2(-home.x,-home.z),st:'idle',t:rr(1,5),tgt:new V3(),walk:rr(0,6),mv:0,sp:(L.old?.75:1.05)*(L.speed||1)*rr(.9,1.1),
+   headY:0,headX:0,lookY:0,lookT:0,bark:[],barkCD:rr(0,4),partner:null,face:false,walkT:0,afterShown:null,talkT:0,mark:null,markK:''};
+  if(kind==='guard'){const rd=W.roads.find(r=>r.dir==='N')||W.roads[0];v.patrol=[11,22].map(t=>{roadPt(rd,t,_vv);return new V3(_vv.x+rd.dz*-1.8,0,_vv.z+rd.dx*1.8);});v.pos.copy(v.patrol[0]);}
+  VIL.list.push(v);vPlace(v);});
+ VIL.markT=0;}
+function vPlace(v){v.root.position.set(v.pos.x,floorY(v.pos.x,v.pos.z),v.pos.z);v.root.rotation.y=v.yaw;}
+function vGo(v,x,z){v.tgt.set(x,0,z);v.st='walk';v.walkT=0;}
+/* next activity: wander kinds pick a point of interest or a chat partner; role kinds keep to their post */
+function vNext(v){v.partner=null;const K=v.kind;
+ if(K==='smith'){if(Math.random()<.25)vGo(v,-5+rr(-1,1),-2.6);else{vGo(v,v.home.x,v.home.z);v.after='work';}return;}
+ if(K==='shop'||K==='mentor'||K==='stay'){if(Math.random()<.5)vGo(v,v.home.x+rr(-1.2,1.2),v.home.z+rr(-1.2,1.2));else{v.st='idle';v.t=rr(3,7);}return;}
+ if(K==='guard'){v.pi=(v.pi||0)^1;const p=v.patrol[v.pi];vGo(v,p.x,p.z);return;}
+ if(Math.random()<.3){const o=VIL.list.filter(u=>u!==v&&u.kind==='wander'&&!u.partner&&u.st==='idle'&&u.pos.distanceTo(v.pos)<14);if(o.length){const u=pick(o);u.partner=v;v.partner=u;u.st='wait';u.t=20;
+  _vv.subVectors(v.pos,u.pos).setY(0).normalize().multiplyScalar(1.15).add(u.pos);vGo(v,_vv.x,_vv.z);return;}}
+ const p=pick(VIL.poi);if(p)vGo(v,p[0]+rr(-.8,.8),p[1]+rr(-.8,.8));}
+function vTurn(v,want,dt,k=4){v.yaw+=wrapA(want-v.yaw)*Math.min(1,dt*k);}
+function vStep(v,dt){const p=v.pos,dx=v.tgt.x-p.x,dz=v.tgt.z-p.z,d=Math.hypot(dx,dz);v.walkT+=dt;
+ if(d<.35||v.walkT>25){if(v.partner&&d<.35){const u=v.partner;v.st=u.st='chat';v.t=u.t=rr(6,11);}else if(v.after){v.st=v.after;v.after=null;v.t=rr(8,16);}else{v.st='idle';v.t=rr(1.5,5);if(v.partner){v.partner.partner=null;v.partner.st='idle';v.partner=null;}}return;}
+ let ax=dx/d,az=dz/d;
+ for(const c of colliders){const ox=p.x-c.x,oz=p.z-c.z;if(Math.abs(ox)>c.r+1.4||Math.abs(oz)>c.r+1.4)continue;const cd=Math.hypot(ox,oz)||1e-3,rad=c.r+.4;if(cd>rad+.9)continue;
+  const k=(rad+.9-cd)/.9,nx=ox/cd,nz=oz/cd,side=(ax*-nz+az*nx)>=0?1:-1;ax+=nx*k*.8+(-nz*side)*k*1.3;az+=nz*k*.8+(nx*side)*k*1.3;}
+ for(const u of VIL.list){if(u===v||u===v.partner)continue;const ox=p.x-u.pos.x,oz=p.z-u.pos.z,cd=Math.hypot(ox,oz);if(cd<.9&&cd>1e-3){ax+=ox/cd*(.9-cd)*2;az+=oz/cd*(.9-cd)*2;}}
+ vTurn(v,Math.atan2(ax,az),dt,5);const sp=v.sp*Math.max(.3,Math.cos(wrapA(Math.atan2(ax,az)-v.yaw)));p.x+=Math.sin(v.yaw)*sp*dt;p.z+=Math.cos(v.yaw)*sp*dt;
+ for(const c of colliders){const ox=p.x-c.x,oz=p.z-c.z,cd=Math.hypot(ox,oz),rad=c.r+.32;if(cd<rad&&cd>1e-3){p.x=c.x+ox/cd*rad;p.z=c.z+oz/cd*rad;}}}
+function vAnim(v,dt,walking){const N=v.N,L=v.L;v.mv=lerp(v.mv,walking?1:0,Math.min(1,dt*6));const mv=v.mv;v.walk+=dt*v.sp*5.6;const ph=v.walk;const hold=!!L.prop&&L.prop!=='hammer';
+ for(const[sd,o]of[['L',0],['R',Math.PI]]){N['thigh'+sd].rotation.x=Math.sin(ph+o)*.5*mv;N['shin'+sd].rotation.x=Math.max(0,Math.sin(ph+o+1.4))*.8*mv+.04;
+  N['uarm'+sd].rotation.set(-Math.sin(ph+o)*.42*mv+.02,0,(sd==='L'?-1:1)*(.07+Math.sin(clock*1.1+v.walk*.1)*.01));N['farm'+sd].rotation.set(-.12-.28*mv,0,0);}
+ if(hold){N.uarmR.rotation.set(-.08,0,.1);N.farmR.rotation.set(-.12,0,0);}
+ const br=Math.sin(clock*1.7+v.walk)*.006;N.hips.position.y=.95-Math.abs(Math.sin(ph))*.035*mv+br;N.hips.position.x=(1-mv)*Math.sin(clock*.4+v.home.x)*.015;
+ let lean=(L.hunch||0)+mv*.05,twist=Math.sin(ph)*.06*mv;
+ if(v.st==='chat'){const g=Math.sin(clock*2.3+v.walk);if(!hold){N.uarmR.rotation.x=-.35-Math.max(0,g)*.5;N.farmR.rotation.x=-.9-g*.25;}v.headX=Math.sin(clock*3.1)*.06;}
+ if(v.st==='work'){const k=(clock*1.6+v.walk)%1,up=k<.7?k/.7:1-(k-.7)/.3;N.uarmR.rotation.set(-1.1-up*1.4,0,.1);N.farmR.rotation.x=-.9+up*.3;lean+=.12;N.uarmL.rotation.set(-.6,0,-.2);N.farmL.rotation.x=-.8;}
+ N.torso.rotation.set(lean,twist,0);N.head.rotation.set(v.headX-lean*.5,v.headY,0);}
+function vLatestMain(){const ids=STORY2.main.map(m=>m.id);let best=null;for(const id of SAVE.main)if(ids.indexOf(id)>ids.indexOf(best))best=id;return best;}
+function vBarkLine(v){const m=vLatestMain(),al=v.d.afterLines||{};if(m&&al[m]&&v.afterShown!==m){v.afterShown=m;return al[m];}
+ if(!v.bark.length){v.bark=v.d.barks.slice();for(let j=v.bark.length-1;j>0;j--){const r=Math.floor(Math.random()*(j+1));[v.bark[j],v.bark[r]]=[v.bark[r],v.bark[j]];}}return v.bark.pop();}
+
+/* ---------- speech bubbles: a pool of two, billboarded above the head, auto-sized to the text ---------- */
+const VBUB=[0,1].map(()=>{const p=new Panel(1.0,.4,640,256,{order:16});p.mesh.visible=false;scene.add(p.mesh);return{p,v:null,t:0};});
+function drawBubble(p,name,txt){const g=p.g;p.clear();g.font=`600 30px 'Alegreya Sans',sans-serif`;const words=String(txt).split(' '),lines=[];let line='';
+ for(const w of words){const t=line?line+' '+w:w;if(g.measureText(t).width>560&&line){lines.push(line);line=w;}else line=t;}if(line)lines.push(line);
+ const ls=lines.slice(0,4);if(lines.length>4)ls[3]+='…';const tw=Math.max(...ls.map(l=>g.measureText(l).width),g.measureText(name).width*.75)+44,th=52+ls.length*36,x=(640-tw)/2,y=256-th-20;
+ rrect(g,x,y,tw,th,16);g.fillStyle='rgba(246,240,226,.95)';g.fill();g.lineWidth=3;g.strokeStyle='rgba(90,64,40,.9)';g.stroke();
+ g.beginPath();g.moveTo(300,y+th-1);g.lineTo(320,254);g.lineTo(338,y+th-1);g.closePath();g.fillStyle='rgba(246,240,226,.95)';g.fill();
+ p.text(name,320,y+30,22,'#9a5a20','Cinzel',800,'center');ls.forEach((l,i)=>p.text(l,320,y+64+i*36,30,'#2a2018','Alegreya Sans',600,'center'));p.update();}
+function vBark(v){const b=VBUB.find(b=>!b.v);if(!b)return false;b.v=v;const line=vBarkLine(v);b.t=Math.max(4,line.length*.06);drawBubble(b.p,v.d.name,line);b.p.mesh.visible=true;b.p.mesh.material.opacity=0;v.barkCD=20;return true;}
+function vBubbles(dt){for(const b of VBUB){if(!b.v)continue;b.t-=dt;const m=b.p.mesh;m.material.opacity=clamp(Math.min(b.t*1.5,m.material.opacity+dt*4),0,1);
+ const r=b.v.root.position;m.position.set(r.x,r.y+2.02*b.v.s+.24,r.z);m.lookAt(headPos);if(b.t<=0){b.v=null;m.visible=false;}}}
+
+/* ---------- quest markers: gold ! (offer) and ? (ready to turn in) ---------- */
+const VMARK={};for(const k of['!','?'])VMARK[k]=new THREE.SpriteMaterial({map:canvasTex(64,96,(g)=>{g.font="900 84px 'Cinzel',serif";g.textAlign='center';g.lineWidth=8;g.strokeStyle='#3a2208';g.strokeText(k,32,80);g.fillStyle='#ffd04a';g.fillText(k,32,80);}),fog:false,depthWrite:false,toneMapped:false});
+const QS=()=>SAVE.quests;
+function qAvail(q){const s=QS();return !s.done.includes(q.id)&&!s.active[q.id]&&(!q.requires||s.done.includes(q.requires))&&SAVE.prog.level>=q.minLevel-2;}
+function qCamps(rid){const c=regionState[rid]&&regionState[rid].camps;return Array.isArray(c)&&c.length?c:null;}
+function qReady(q){const a=QS().active[q.id];if(!a)return false;const P=q.params;
+ if(q.type==='kill')return a.n>=P.count;if(q.type==='fetch')return !!a.got;if(q.type==='boss')return !!a.killed;if(q.type==='clear'){const c=qCamps(P.region);return c?c.every(x=>x&&x.cleared):a.n>=10;}return false;}
+const vName=id=>(NPC_AT[id]||{}).name||id,rName=id=>id==='any'?'anywhere':(REGION_AT[id]||{}).name||id;
+function qText(q){const a=QS().active[q.id]||{},P=q.params;if(q.type==='deliver')return `bring ${P.item} to ${vName(P.to)}`;if(qReady(q))return `return to ${vName(q.giver)}`;
+ if(q.type==='kill')return `${a.n||0}/${P.count} ${P.enemy}s`;if(q.type==='fetch')return `find it in ${rName(P.region)}`;if(q.type==='boss')return `${P.boss.name}, ${rName(P.region)}`;
+ const c=qCamps(P.region);return c?`camps ${c.filter(x=>x&&x.cleared).length}/${c.length}`:`${a.n||0}/10 foes, ${rName(P.region)}`;}
+function qTracked(){const ids=Object.keys(QS().active);const t=QS().track;return SQ_AT[ids.includes(t)?t:ids[ids.length-1]]||null;}
+function questLine(){const q=qTracked();return q?`${q.title}: ${qText(q)}`:'';}
+function acceptQuest(id){const q=SQ_AT[id];if(!q||!qAvail(q))return false;QS().active[id]={n:0};QS().track=id;save();toast(`Quest: ${q.title}`);sfx('ui',null,.6);VIL.markT=0;
+ if(state.region!==HUB_ID&&!state.traveling)questOnRegion(REGION_AT[state.region]);return true;}
+function turnInQuest(id){const q=SQ_AT[id],s=QS();if(!q||!s.active[id])return false;delete s.active[id];if(!s.done.includes(id))s.done.push(id);grantReward(q.reward);toast(`Quest complete: ${q.title}`);sfx('reward',null,.7);VIL.markT=0;save();return true;}
+function questOnKill(e){if(!e||e.dummy)return;const s=QS();let any=false;
+ for(const id in s.active){const q=SQ_AT[id];if(!q)continue;const a=s.active[id],P=q.params,was=qReady(q);let ch=false;
+  if(q.type==='kill'&&e.type===P.enemy&&(P.region==='any'||P.region===state.region)&&a.n<P.count){a.n++;ch=true;}
+  if(q.type==='clear'&&P.region===state.region){a.n=(a.n||0)+1;ch=true;}
+  if(q.type==='boss'&&e.bossName===P.boss.name&&!a.killed){a.killed=true;ch=true;say(P.boss.deathLine,P.boss.name);}
+  if(ch&&!was&&qReady(q))toast(`${q.title}: return to ${vName(q.giver)}`);else if(ch)toast(`${q.title}: ${qText(q)}`);any=any||ch;}
+ if(any){save();VIL.markT=0;}}
+/* called after a region is built: out-of-town villagers, fetch pickups, side-quest bosses */
+function questOnRegion(R){if(!R)return;if(!R.hub||!VIL.group||VIL.region!==R.id)spawnVillagers(R.id);const s=QS();
+ for(const id in s.active){const q=SQ_AT[id],a=s.active[id],P=q.params;if(P.region!==R.id)continue;
+  if(q.type==='fetch'&&!a.got&&!VIL.pickups.some(p=>p.q===id)){const pos=vilSpot(id,11,17,4);pos.y=floorY(pos.x,pos.z);const g=new THREE.Group();g.position.copy(pos);
+   const it=new THREE.Mesh(merge([G(new THREE.OctahedronGeometry(.11,0),'#ffd27a',{}),G(new THREE.TorusGeometry(.14,.015,3,12),'#fff0b0',{r:[Math.PI/2,0,0]})]),MAT_GLOW);it.position.y=.9;g.add(it);
+   const beam=new THREE.Mesh(beamGeo,beamMat);beam.position.y=1.6;beam.renderOrder=5;g.add(beam);VIL.group.add(g);VIL.pickups.push({q:id,g,it,pos});}
+  if(q.type==='boss'&&!a.killed&&!enemies.some(e=>!e.dead&&e.bossName===P.boss.name)){const pos=vilSpot(id,12,16,3);const e=new Enemy(P.boss.type,pos,P.boss.name);e.questBoss=id;
+   say(P.boss.taunt,P.boss.name);bossPanel.mesh.visible=true;drawBoss(e);setMusic('boss');}}}
+function vPickups(dt){for(let i=VIL.pickups.length-1;i>=0;i--){const p=VIL.pickups[i];p.it.rotation.y+=dt*2;p.it.position.y=.9+Math.sin(clock*2.2)*.08;_vv.copy(p.pos).y+=.9;
+ const near=XR?hands.some(h=>h.pos.distanceTo(_vv)<.4):Math.hypot(headPos.x-p.pos.x,headPos.z-p.pos.z)<1.2;
+ if(near){const a=QS().active[p.q],q=SQ_AT[p.q];if(a){a.got=true;save();toast(`Found ${q.params.item}. Return to ${vName(q.giver)}.`);sfx('reward',p.pos,.6);fx.spark(_vv,0xffd27a,24,2.5,1.2,-1);}VIL.group.remove(p.g);VIL.pickups.splice(i,1);VIL.markT=0;}}}
+
+/* ---------- talking: dialogue pages, offers, turn-ins, the merchant's shop and the smith's whetstone ---------- */
+const VDLG=new Panel(1.0,.56,880,492,{interactive:true,order:17});VDLG.mesh.visible=false;
+const VD={v:null,mode:'',lines:[],i:0,q:null,end:'',msg:'',spk:''};
+function vDlgClose(){VD.v=null;VDLG.mesh.visible=false;if(VDLG.mesh.parent)scene.remove(VDLG.mesh);}
+function vDlgOpen(v){VD.v=v;VD.msg='';const r=v.root.position;_vv.subVectors(headPos,r).setY(0).normalize();VDLG.mesh.position.set(r.x+_vv.x*.55,headPos.y-.28,r.z+_vv.z*.55);
+ VDLG.mesh.lookAt(headPos.x,headPos.y-.28,headPos.z);if(!VDLG.mesh.parent)scene.add(VDLG.mesh);VDLG.mesh.visible=true;drawDlg();}
+function vLines(v,lines,end,q,spk){Object.assign(VD,{mode:'lines',lines:[].concat(lines),i:0,end,q,spk:spk||v.d.name});vDlgOpen(v);}
+function vTurnInFor(v){const s=QS();for(const id in s.active){const q=SQ_AT[id];if(q.type==='deliver'?q.params.to===v.d.id:q.giver===v.d.id&&qReady(q))return q;}return null;}
+function vOfferFor(v){return STORY2.sidequests.find(q=>q.giver===v.d.id&&qAvail(q))||null;}
+function talkTo(v){if(typeof v==='string')v=VIL.list.find(u=>u.d.id===v);if(!v)return false;v.face=true;v.talkT=clock;
+ const ti=vTurnInFor(v);if(ti){vLines(v,ti.doneLines,'done',ti,ti.doneSpeaker!=null?(ti.doneSpeaker?vName(ti.doneSpeaker):'Narrator'):v.d.name);return true;}
+ if(v.kind==='shop'){VD.mode='shop';vDlgOpen(v);return true;}if(v.d.role==='blacksmith'){VD.mode='smith';vDlgOpen(v);return true;}
+ const of=vOfferFor(v);if(of){vLines(v,of.offerLines,'offer',of);return true;}
+ const act=STORY2.sidequests.find(q=>q.giver===v.d.id&&QS().active[q.id]);if(act){vLines(v,[act.progressLine],'bye',act);return true;}
+ vLines(v,[v.kind==='mentor'&&SAVE.done<6?pick(STORY.hub.returnLines):vBarkLine(v)],'bye',null);return true;}
+function drawDlg(){const p=VDLG,v=VD.v;if(!v)return;const keep=p.hover;p.clear();p.hover=keep;p.bg();
+ p.text((VD.mode==='lines'?VD.spk:v.d.name).toUpperCase(),40,62,30,'#e9874a','Cinzel',800);p.text(VD.q&&VD.mode==='lines'?VD.q.title:v.d.role[0].toUpperCase()+v.d.role.slice(1),840,60,24,'#a89f90','Alegreya Sans',600,'right');
+ if(VD.mode==='lines'){p.text(VD.lines[VD.i]||'',40,124,32,'#efe6d2','Alegreya Sans',500,'left',800);const last=VD.i>=VD.lines.length-1;
+  if(VD.q&&last&&(VD.end==='offer'||VD.end==='done')){const r=VD.q.reward;p.text(`${VD.end==='offer'?'Reward':'Received'}: ${r.xp} XP · ${r.gold} gold${r.weapon?' · '+WDEF[WEAPON_ID[r.weapon]||r.weapon].name:''}${r.skillPoint?' · skill point':''}`,40,350,24,'#e8c04a','Alegreya Sans',700);}
+  if(!last)p.button('next','Next',600,390,240,72,{size:30});else if(VD.end==='offer'){p.button('accept','Accept',360,390,240,72,{size:30});p.button('later','Not now',620,390,220,72,{size:28});}else p.button('bye','Farewell',600,390,240,72,{size:30});}
+ if(VD.mode==='shop'){p.text(`Your gold: ${SAVE.prog.gold}`,40,104,26,'#e8c04a','Alegreya Sans',700);PROG.shop.forEach((it,i)=>{const y=122+i*44,own=SAVE.weapons.includes(it.id),lv=it.minLevel&&SAVE.prog.level<it.minLevel;
+   p.text(WDEF[it.id]?WDEF[it.id].name:it.id,40,y+30,26,lv?'#8a8090':'#efe6d2','Alegreya Sans',600);p.text(`${it.price} g`,420,y+30,26,'#e8c04a','Alegreya Sans',700);p.text(it.minLevel?`Lv ${it.minLevel}`:'',540,y+30,22,lv?'#e0645a':'#a89f90','Alegreya Sans',600);
+   if(own)p.text('Owned',760,y+30,24,'#8ad07a','Alegreya Sans',700,'center');else p.button('buy:'+it.id,'Buy',690,y+3,140,38,{size:24,disabled:lv});});
+  p.text(VD.msg,40,422,24,'#efe6d2','Alegreya Sans',600,'left',420);p.button('talk','Talk',500,400,160,64,{size:28});p.button('bye','Leave',680,400,160,64,{size:28});}
+ if(VD.mode==='smith'){const w=vHeld(),m=w?PROG.sharpMul(w.id):1;p.text('"Hold up the blade you want edged, and I will put a proper bite on it."',40,124,28,'#efe6d2','Alegreya Sans',500,'left',800);
+  p.text(w?`Holding: ${WDEF[w.id].name} · edge x${m.toFixed(1)}`:'You are not holding a weapon.',40,230,26,'#a89f90','Alegreya Sans',600);p.text(VD.msg,40,272,24,'#e8c04a','Alegreya Sans',600,'left',800);
+  p.button('sharpen',`Sharpen · ${VSHARP} gold`,40,300,360,72,{size:28,disabled:!w||m>=1.5});const of=vOfferFor(v);if(of)p.button('work','Ask about work',420,300,300,72,{size:28});
+  p.button('talk','Talk',420,400,180,64,{size:28});p.button('bye','Leave',620,400,220,64,{size:28});}
+ p.update();}
+VDLG.redraw=drawDlg;
+const VSHARP=200;
+function vHeld(){for(const h of[hands[1],hands[0]])if(h.held&&WDEF[h.held.id]&&!h.held.d.shield)return h.held;return null;}
+function sharpenHeld(){const w=vHeld();if(!w)return{ok:false,reason:'hold a weapon'};const sp=SAVE.prog.sharp=SAVE.prog.sharp||{},m=sp[w.id]||1;if(m>=1.5)return{ok:false,reason:'already razor sharp'};
+ if(SAVE.prog.gold<VSHARP)return{ok:false,reason:'not enough gold'};SAVE.prog.gold-=VSHARP;sp[w.id]=Math.round((m+.1)*10)/10;save();sfx('reward',null,.5);return{ok:true,mult:sp[w.id]};}
+function vDlgClick(id){const v=VD.v;if(!v)return;sfx('ui',null,.5);
+ if(id==='next'){VD.i++;}else if(id==='accept'){acceptQuest(VD.q.id);vDlgClose();return;}else if(id==='later'||id==='bye'){if(VD.end==='done'&&VD.q){turnInQuest(VD.q.id);VD.q=null;}vDlgClose();return;}
+ else if(id.startsWith('buy:')){const r=buyWeapon(id.slice(4));VD.msg=r.ok?`${WDEF[id.slice(4)].name} bought. It waits on the rack.`:`Cannot buy: ${r.reason}.`;}
+ else if(id==='talk'){vLines(v,[vBarkLine(v)],'back',null);return;}else if(id==='work'){const of=vOfferFor(v);if(of)vLines(v,of.offerLines,'offer',of);return;}
+ else if(id==='sharpen'){const r=sharpenHeld();VD.msg=r.ok?`Edge honed: x${r.mult.toFixed(1)} damage.`:`No: ${r.reason}.`;}
+ if(VD.mode==='lines'&&VD.end==='back'&&VD.i>=VD.lines.length){VD.mode=v.kind==='shop'?'shop':'smith';}
+ drawDlg();}
+VDLG.onClick=vDlgClick;
+/* aiming: nearest villager within 2.5 m whose chest is within ~0.45 m of the ray */
+function vilAimed(o,d){let best=null,bd=1e9;for(const v of VIL.list){const r=v.root.position;if(Math.hypot(r.x-headPos.x,r.z-headPos.z)>2.5)continue;_vw.set(r.x,r.y+1.25*v.s,r.z).sub(o);const t=_vw.dot(d);if(t<0)continue;
+ const miss=Math.sqrt(Math.max(0,_vw.lengthSq()-t*t));if(miss<.5*v.s+.1&&t<bd){bd=t;best=v;}}return best;}
+/* uiInteract branch: returns true when this hand points at a villager (laser shown; click talks) */
+function vilAim(h,o,d,click){const v=vilAimed(o,d);if(!v)return false;h.uiHover=VIL;
+ if(XR){const r=v.root.position,dist=_vd.set(r.x,r.y+1.25*v.s,r.z).distanceTo(o);h.laser.visible=true;h.laser.scale.set(1,1,dist);h.dot.visible=true;h.dot.position.copy(o).addScaledVector(d,dist);}
+ if(click&&!VD.v){buzz(h,.3,30);talkTo(v);}return true;}
+addEventListener('keydown',e=>{if(XR||e.code!=='KeyE'||state.mode!=='play'||VD.v)return;camera.getWorldDirection(_vd);const v=vilAimed(headPos,_vd);if(v){e.stopImmediatePropagation();talkTo(v);}},true);
+
+function updateVillagers(dt){
+ if(VIL.group&&(!npc||npc.root!==VIL.group))vilClear();if(!VIL.group||state.traveling)return;
+ const hx=headPos.x,hz=headPos.z;let nb=0;for(const b of VBUB)if(b.v)nb++;
+ for(const v of VIL.list){const p=v.pos,dp=Math.hypot(hx-p.x,hz-p.z);const far=dp>32;v.root.visible=!far;
+  if(v.face){if(dp>3.2&&VD.v!==v)v.face=false;}else if(dp<2.5){v.face=true;if(v.st==='walk')v.resume=true;}
+  if(v.face){vTurn(v,Math.atan2(hx-p.x,hz-p.z),dt,3);const hy=wrapA(Math.atan2(hx-p.x,hz-p.z)-v.yaw);v.headY=lerp(v.headY,clamp(hy,-.8,.8),Math.min(1,dt*5));
+   v.headX=lerp(v.headX,clamp(-Math.atan2(headPos.y-(v.root.position.y+1.6*v.s),Math.max(.3,dp)),-.5,.5),Math.min(1,dt*4));if(!far)vAnim(v,dt,false);}
+  else{if(v.resume){v.resume=false;v.st='walk';}
+   if(v.st==='walk')vStep(v,dt);else{v.t-=dt;if(v.st==='chat'&&v.partner){vTurn(v,Math.atan2(v.partner.pos.x-p.x,v.partner.pos.z-p.z),dt,3);}
+    else if(v.st==='wait'&&v.partner){vTurn(v,Math.atan2(v.partner.pos.x-p.x,v.partner.pos.z-p.z),dt,2);}
+    if(v.st==='work'){vTurn(v,Math.atan2(VPOS.forge[0]-p.x,VPOS.forge[1]-p.z),dt,3);}
+    if(v.t<=0){if(v.st==='chat'&&v.partner){const u=v.partner;u.partner=null;u.st='idle';u.t=rr(1,4);}if(v.st==='wait'&&v.partner){v.partner.partner=null;v.partner=null;}vNext(v);}}
+   v.lookT-=dt;if(v.lookT<=0){v.lookT=rr(1.5,4);v.lookY=v.st==='walk'?rr(-.2,.2):rr(-.7,.7);}
+   v.headY=lerp(v.headY,v.st==='chat'?0:v.lookY,Math.min(1,dt*2));if(v.st!=='chat')v.headX=lerp(v.headX,0,Math.min(1,dt*2));if(!far)vAnim(v,dt,v.st==='walk');}
+  vPlace(v);
+  v.barkCD-=dt;if(v.kind==='mentor'){v.talkT2=(v.talkT2||0)-dt;if(v.talkT2<=0&&dp<2.6&&!narrCur&&!narrQ.length&&state.inHub){v.talkT2=25;say(SAVE.done>=6?STORY.ending.slice(-2):pick(STORY.hub.returnLines));}}
+  else if(v.barkCD<=0&&dp<4&&nb<2&&VD.v!==v&&!VBUB.some(b=>b.v===v)){if(vBark(v))nb++;}}
+ vBubbles(dt);vPickups(dt);
+ VIL.markT-=dt;if(VIL.markT<=0){VIL.markT=.5;for(const v of VIL.list){const k=vTurnInFor(v)?'?':vOfferFor(v)?'!':'';if(k!==v.markK){v.markK=k;if(v.mark){v.root.remove(v.mark);v.mark=null;}
+  if(k){v.mark=new THREE.Sprite(VMARK[k]);v.mark.scale.set(.2/v.s,.3/v.s,1);v.root.add(v.mark);}}}}
+ for(const v of VIL.list)if(v.mark)v.mark.position.y=(v.L.prop==='spear'||v.L.prop==='pole'?2.55:2.25)+Math.sin(clock*2.5)*.05;
+ if(VD.v&&(Math.hypot(hx-VD.v.pos.x,hz-VD.v.pos.z)>4||!VIL.list.includes(VD.v)))vDlgClose();
+ if(!XR){if(!VIL.hq){VIL.hq=document.createElement('div');VIL.hq.style.cssText="position:fixed;left:16px;bottom:44px;font:600 14px 'Alegreya Sans';color:#e8c04a;text-shadow:0 1px 3px #000;pointer-events:none";document.body.appendChild(VIL.hq);}
+  const t=questLine();VIL.hq.style.display=$('#hudD').style.display==='block'&&t?'block':'none';if(VIL.hq.textContent!==t)VIL.hq.textContent=t;}}
+
 /* ============================== STORY ============================== */
 const STORY={"title": "Hollowmere: The Cold Crown", "tagline": "Cut through the frost-crowned dead to break the Hollow King's grip.", "mentor": {"name": "Idris Vane", "description": "A grey-bearded lamplighter who once served the Hollow King and now hunts what he left behind."}, "hub": {"name": "The Lantern Yard", "biome": "dawn meadow", "intro": ["Welcome to Hollowmere. The frost came out of the wood three winters ago and has not left.", "The Hollow King wears a crown of ice, and every dead thing that wakes in the wood answers to it.", "Your blade is steady. Take the road into the wood, and bring back what you find."], "returnLines": ["The frost pulled back a little. Rest, then go again.", "Another stretch of road is clear. The King will notice."]}, "chapters": [{"id": 1, "name": "The Edge of the Wood", "biome": "deep forest day", "objective": "Clear the bandit camp at the forest edge.", "intro": ["The wood was ours once. Now the trees hold bandits and worse.", "Keep your dagger for close work. The longsword will handle the rest.", "Stay on your feet. Bandits rush before they talk."], "waves": [{"enemies": {"bandit": 2}, "line": "Two bandits by the fallen log. Let them come to you."}, {"enemies": {"bandit": 1, "bandit archer": 2}, "line": "Archers in the roots. Close the distance fast."}, {"enemies": {"skeleton": 2, "bandit": 1}, "line": "Something under the leaves is rising. Skeletons. Hold your ground."}], "boss": null, "outro": ["The camp is quiet now. Someone was keeping a ledger of the dead.", "Take the ledger. It names the King's next target at the black water."], "reward": {"kind": "spell", "id": "fireball"}}, {"id": 2, "name": "Black Water Ferry", "biome": "swamp dusk", "objective": "Cross the marsh and break the skeleton line at the ferry.", "intro": ["The marsh swallows sound and light. Watch your footing.", "The ferry is the King's road north. Whoever holds it holds the wood.", "Skeletons walk the reeds like they remember the way."], "waves": [{"enemies": {"skeleton": 2, "bandit": 1}, "line": "Three of them, moving through the reeds."}, {"enemies": {"bandit archer": 1, "skeleton": 2}, "line": "Archer on the ferry post. Get low and close the gap."}, {"enemies": {"armored knight": 1, "skeleton": 3}, "line": "A knight with a shield walks out of the mist. Go for his feet."}], "boss": null, "outro": ["The ferry is broken and the far bank is ours. For now.", "A knight's shield was left on the dock. Someone wanted you to find it."], "reward": {"kind": "weapon", "id": "round shield"}}, {"id": 3, "name": "The Frozen Pass", "biome": "snowy pass night with aurora", "objective": "Defeat Halvard the Unbent at the top of the pass.", "intro": ["The snow here does not melt, even at noon.", "The wraiths above are the King's eyes. Dodge their dark orbs and close in.", "Something heavy is coming down the ridge. Hold your ground when it arrives."], "waves": [{"enemies": {"wraith": 1, "skeleton": 2, "bandit archer": 1}, "line": "Wraiths above the drifts. Keep moving so their orbs miss."}, {"enemies": {"brute": 1, "skeleton": 2, "bandit": 1}, "line": "A brute is climbing the switchbacks. Watch his mace swing."}, {"enemies": {"armored knight": 1, "skeleton": 2, "wraith": 1, "bandit archer": 1}, "line": "Halvard is here. He was a knight of the crown. Do not let him set the pace."}], "boss": {"name": "Halvard the Unbent", "type": "armored knight", "taunt": ["I swore an oath to the crown. You will not pass.", "Stand still and let the cold settle in."], "deathLine": "The oath ends here. Let the snow take me."}, "outro": ["The pass is open. The aurora above is green for the first time in months.", "Beyond the pass, the keep of Ashgrave rises out of the storm."], "reward": {"kind": "spell", "id": "lightning"}}, {"id": 4, "name": "Ashgrave Keep", "biome": "ruined castle thunderstorm", "objective": "Fight through the courtyard and reach the keep stairs.", "intro": ["Ashgrave kept its bells for a hundred years, until the King came for them.", "Storm on the walls, and the dead are on the stairs.", "The keep has one way up, through the courtyard and the gate."], "waves": [{"enemies": {"bandit": 2, "brute": 1, "skeleton": 1}, "line": "A brute waits by the gate. Stay out of his swing arc."}, {"enemies": {"wraith": 2, "armored knight": 1, "skeleton": 2}, "line": "Wraiths in the arrow slits. Keep moving through the courtyard."}, {"enemies": {"brute": 1, "skeleton": 3, "bandit archer": 1}, "line": "Thunder, then the keep wakes up. Hold the stairs."}], "boss": null, "outro": ["The gate is open. Thunder rolls over the courtyard and the bells are finally quiet.", "The stairs lead toward the throne. The air up there tastes like frost."], "reward": {"kind": "spell", "id": "slow time"}}, {"id": 5, "name": "The Siege Meadow", "biome": "dawn meadow", "objective": "Break the siege lines before the sun clears the hill.", "intro": ["This meadow fed Hollowmere for generations. Now it feeds the siege.", "The sun will rise soon, and the dead do not like daylight.", "Push through the lines before the light reaches the lower field."], "waves": [{"enemies": {"skeleton": 2, "armored knight": 1, "bandit": 2}, "line": "The siege lines are dug in. Start with the knight's shield."}, {"enemies": {"brute": 1, "wraith": 2, "bandit archer": 2, "skeleton": 1}, "line": "Archers on the hill and a brute in the center. Split your attention."}, {"enemies": {"armored knight": 2, "skeleton": 2, "wraith": 1, "bandit archer": 1}, "line": "Two knights at the last tent. Break their guard and keep moving."}], "boss": null, "outro": ["The siege line is broken. The sun comes up over the meadow for the first time in weeks.", "Past the last tent, a red sky waits. The throne is close."], "reward": {"kind": "weapon", "id": "greatsword"}}, {"id": 6, "name": "Throne Under a Red Sky", "biome": "red eclipse wasteland", "objective": "Reach the throne and break the Hollow King's crown.", "intro": ["This is the last of it. The Hollow King sits under a sky gone red.", "The crown is the source of the frost. Break it and the dead lose their shape.", "There is no road back from here. Go up the steps."], "waves": [{"enemies": {"skeleton": 3, "bandit": 2, "wraith": 1}, "line": "The first guard is already moving. Do not wait for them to surround you."}, {"enemies": {"armored knight": 2, "brute": 1, "wraith": 2, "bandit archer": 2}, "line": "The King's honor guard. Take the knights down first."}, {"enemies": {"brute": 1, "skeleton": 3, "armored knight": 2, "wraith": 2}, "line": "The King is on the steps. Everything he has is here."}], "boss": {"name": "The Hollow King", "type": "brute", "taunt": ["You walked into my cold house, mortal.", "Kneel now, and I will make it quick."], "deathLine": "Cold is all that is left of me. Light, then. Let it burn."}, "outro": ["The crown cracks and the frost goes out of the stone like breath from a dying fire.", "The lamplighter stands over the throne and does not look away."], "reward": {"kind": "spell", "id": "gravity push"}}], "ending": ["The Hollow King fell, and the cold went out of the crown like breath from a closed room.", "Hollowmere's lanterns came back on one by one, all the way to the edge of the wood.", "The dead lay still. Some of them looked like neighbors you could have known.", "The lamplighter buried the crown in the meadow where the harvest used to grow.", "Far north, under the red sky, something has begun to hum. The wood still keeps its secrets."], "deathLines": ["The cold takes you. The lamp goes out.", "You are down in the frost. Get up when you can.", "The Hollow King keeps what he takes. Try again."]};
 const REWARD_LINES={
@@ -1569,11 +2817,8 @@ function rackSlots(){const out=[];if(!W.rack)return out;W.rack.updateMatrixWorld
 function fillRack(){const slots=rackSlots();const owned=id=>weapons.some(w=>w.owner==='player'&&w.id===id&&(w.state==='held'||w.state==='holster'));const used=s=>weapons.some(w=>w.state==='rack'&&Math.hypot(w.obj.position.x-s.x,w.obj.position.z-s.z)<.25);
  for(const id of SAVE.weapons){if(!WDEF[id])continue;if(owned(id)&&id!=='dagger')continue;if(weapons.some(w=>w.id===id&&w.state==='rack'))continue;const k=slots.findIndex(s=>!used(s));if(k<0)break;
   const w=spawnWeapon(id,slots[k]);w.state='rack';w.obj.quaternion.setFromAxisAngle(UP,W.rack.rotation.y);if(id==='shield'){w.obj.quaternion.multiply(new QT().setFromAxisAngle(UP,Math.PI/2));}w.obj.position.y=slots[k].y-(id==='spear'?.2:0);w.seg();}}
-function buildNpc(){const n=buildEnemy('archer',false);n.root.position.set(1.8,floorY(1.8,-.6),-.6);const N=n.N;N.uarmL.rotation.set(.1,0,-.15);N.uarmR.rotation.set(-.5,0,.15);N.farmR.rotation.set(-.9,0,0);
- const lan=new THREE.Group();lan.add(new THREE.Mesh(merge([G(new THREE.CylinderGeometry(.05,.06,.14,6),'#2a2a2a',{}),G(new THREE.ConeGeometry(.07,.06,6),'#2a2a2a',{p:[0,.1,0]})]),MAT),new THREE.Mesh(G(new THREE.OctahedronGeometry(.045,0),'#ffd070',{}),MAT_GLOW));lan.position.set(0,-.4,0);N.farmR.add(lan);
- return{...n,yaw:0,talkT:0};}
-function updateNpc(dt){if(!npc)return;const p=npc.root.position;const want=Math.atan2(headPos.x-p.x,headPos.z-p.z);let d=want-npc.yaw;while(d>Math.PI)d-=TAU;while(d<-Math.PI)d+=TAU;npc.yaw+=d*Math.min(1,dt*2);npc.root.rotation.y=npc.yaw;npc.N.hips.position.y=.95+Math.sin(clock*1.6)*.008;npc.N.head.rotation.x=Math.sin(clock*.7)*.05;
- npc.talkT-=dt;if(npc.talkT<=0&&p.distanceTo(headPos)<2.6&&!narrCur&&!narrQ.length){npc.talkT=25;say(SAVE.done>=6?STORY.ending.slice(-2):pick(STORY.hub.returnLines));}}
+/* the old lantern NPC is replaced by the villager system (VILLAGERS & QUESTS); Idris Vane is villager id idris */
+function updateNpc(){}
 
 /* ---------- menus ---------- */
 function drawMenu(){const m=menu;m.clear();m.bg();m.text(STORY.hub.name.toUpperCase(),600,74,44,'#e9874a','Cinzel',800,'center');m.text('Choose where the road takes you',600,116,28,'#a89f90','Alegreya Sans',500,'center');
@@ -1602,7 +2847,7 @@ function drawLoading(R){const p=loadPanel;p.clear();p.bg('rgba(10,8,14,.95)');p.
  p.text(pick(R.tips),520,300,32,'#efe6d2','Alegreya Sans',500,'center',900);p.text('Loading…',520,452,24,'#6a6276','Alegreya Sans',500,'center');p.update();}
 function setupHub(){
  player.dead=false;player.hp=player.maxHp;player.mana=player.maxMana;player.slow=false;
- npc=buildNpc();
+ spawnVillagers(HUB_ID);
  dummy=new Enemy('bandit',new V3(5.5,0,-3.5),null);dummy.dummy=true;dummy.state='idle';if(dummy.weapon){dummy.weapon.remove();dummy.weapon=null;}dummy.root.position.y=floorY(5.5,-3.5);dummy.pos.set(5.5,0,-3.5);dummy.yaw=-.9;
  if(!dummyPanel){dummyPanel=new Panel(.5,.2,480,192,{order:11});}dummyPanel.mesh.position.set(5.5,floorY(5.5,-3.5)+2.35,-3.5);dummyPanel.mesh.lookAt(0,2.3,4);scene.add(dummyPanel.mesh);dummyHit(0,'swing at me','');
  fillRack();
@@ -1679,7 +2924,7 @@ function uiInteract(){
   if(hit){const id=hit.panel.hit(hit.uv);if(hit.panel.hover!==id){hit.panel.hover=id;if(hit.panel===menu)drawMenu();else if(hit.panel===endPanel)showEndHover();else if(hit.panel.redraw)hit.panel.redraw();}h.uiHover=hit.panel;
    if(XR){h.laser.visible=true;h.laser.scale.set(1,1,o.distanceTo(hit.point));h.dot.visible=true;h.dot.position.copy(hit.point);}
    const click=XR?pressed(h,'trig'):deskClick;if(click&&id){buzz(h,.3,30);if(hit.panel.onClick)hit.panel.onClick(id);else onMenu(id);}}
-  else{if(XR&&!h.tk){h.laser.visible=false;}h.dot.visible=false;for(const p of panels)if(p.hover){p.hover=null;if(p===menu)drawMenu();else if(p===endPanel)showEndHover();else if(p.redraw)p.redraw();}}}
+  else{if(vilAim(h,o,d,XR?pressed(h,'trig'):deskClick))continue;if(XR&&!h.tk){h.laser.visible=false;}h.dot.visible=false;for(const p of panels)if(p.hover){p.hover=null;if(p===menu)drawMenu();else if(p===endPanel)showEndHover();else if(p.redraw)p.redraw();}}}
  deskClick=false;}
 function showEndHover(){const p=endPanel;const keep=p.hover;showEnd.last=showEnd.last||false;p.clear();p.bg();const final=state.chapter===6;p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[Math.max(0,state.chapter-1)].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');p.hover=keep;
  p.button('hub','Return to the Lantern Yard',60,160,760,90,{size:32});if(!final&&state.chapter<6)p.button('next',`Continue: ${STORY.chapters[state.chapter].name}`,60,270,760,90,{size:30});p.update();}
@@ -1705,6 +2950,7 @@ function frame(){
  if(flames)flames.forEach((f,i)=>{f.scale.setScalar((1+Math.sin(clock*13+i)*.1+Math.sin(clock*7.3)*.06));f.rotation.y+=dt*.6;});if(fireLight.intensity>0)fireLight.intensity=3.5+Math.sin(clock*11)*.5+Math.sin(clock*17)*.3;
  player.invuln=Math.max(0,player.invuln-dt);player.mana=Math.min(player.maxMana,player.mana+(hands.some(h=>h.cast)?PROG.manaRegen*.25:PROG.manaRegen)*dt);if(clock-player.lastHurt>PROG.regenDelay&&!player.dead)player.hp=Math.min(player.maxHp,player.hp+PROG.hpRegen*dt);
  updateProgression(dt);
+ updateVillagers(dt);
  updateNarr(dt);hudT-=dt;if(hudT<=0){hudT=.1;drawWrist();}
  if(bossPanel.mesh.visible){bossPanel.mesh.position.copy(narrPos).y+=.34;bossPanel.mesh.lookAt(headPos.x,bossPanel.mesh.position.y,headPos.z);}
  updateFade(dt);updateListener();
@@ -1726,13 +2972,14 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
  camera.position.set(0,0,0);if(state.mode==='title')await startGame(true);else{$('#ui').classList.add('hide');}setTimeout(attachWrist,500);}catch(err){$('#status').textContent='Could not start VR: '+err.message;}};
 (async()=>{
  try{await document.fonts.ready;}catch(e){}
- buildWorld(REGION_AT[HUB_ID]);npc=buildNpc();
+ buildWorld(REGION_AT[HUB_ID]);spawnVillagers(HUB_ID);
  $('#status').textContent=`World ready · ${(W.tris/1000).toFixed(0)}k triangles`;
  if(navigator.xr){try{const ok=await navigator.xr.isSessionSupported('immersive-vr');const b=$('#b-vr');b.disabled=!ok;b.textContent=ok?'Enter VR':'VR not available here';if(!ok)$('#status').textContent+=' · Open this page in the Meta Quest browser to play in VR';}catch(e){$('#b-vr').textContent='VR not available here';}}
  else{$('#b-vr').textContent='VR not available here';$('#status').textContent+=' · WebXR needs HTTPS and a VR browser';}
 })();
 window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,startChapter,enterHub,startWave,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
 Object.assign(window.HM,{PROG,SKILLS,SPELLS,grantKillXP,grantReward,buyWeapon,rollDrop,spellKnown,spellList,openSkillPanel,closeSkillPanel,toggleSkillPanel,skillPanel,explode});
+Object.assign(window.HM,{VIL,VD,VDLG,VBUB,STORY2,SQ_AT,spawnVillagers,updateVillagers,talkTo,vDlgClick,acceptQuest,turnInQuest,qReady,qAvail,questLine,questOnKill,questOnRegion,sharpenHeld,colliders:()=>colliders,teleportRig});
 
 </script>
 </body>
