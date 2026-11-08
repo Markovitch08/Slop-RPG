@@ -1080,10 +1080,11 @@ class Enemy{
   if(A.dodge){if(this.dodgeT>=0){this.dodgeT-=dt;if(this.dodgeT<0&&this.state!=='stagger'&&this.state!=='knock'){this.step(this.dodgeDir.x,this.dodgeDir.z,.6,.2);this.st.dodge++;}}
    else if(this.dodgeCD<=0&&this.stepT<=0&&this.incoming()<1){this.dodgeCD=.8;if(Math.random()<.35+TI.block*.6){this.dodgeT=clamp(TI.react*.5,.1,.35);this.dodgeDir.set(-_a1.z,0,_a1.x).normalize();if(this.dodgeDir.dot(_a2)<0)this.dodgeDir.negate();}}}
   if(this.counterT>0){this.counterT-=dt;if(this.counterT<=0&&(this.state==='block'||this.state==='engage')&&dist<reach+.5&&!player.dead){if(!this.hasToken){this.hasToken=true;attackTokens++;}this.startAttack(Math.random()<.5?'thrust':'sideR',true);this.st.counter++;}}
+  if(T.caster)this.blinkT-=dt;
   switch(this.state){
    case 'approach':case 'engage':{
     if(T.caster){const want=7;if(dist>want+2)move.copy(to),speed=T.speed;else if(dist<want-2)move.copy(to).negate(),speed=T.speed;move.addScaledVector(_v3.set(to.z,0,-to.x),this.strafe*.8);speed=speed||1.2;
-     this.cool-=dt;this.blinkT-=dt;
+     this.cool-=dt;
      if(this.volley>0){this.volT-=dt;if(this.volT<=0){this.castOrb();this.volley--;this.volT=1.2;}}
      else if(this.blinkT<=0||(dist<3.2&&this.blinkT<5)){this.state='blink';this.atkT=0;sfx('blinkcue',this.pos,.8);}
      else if(this.cool<=0&&dist<16){this.state='windup';this.atkT=0;this.windDur=T.windup*TI.tele*(this.boss?.8:1);sfx('charge',this.pos,.5);}
@@ -1445,7 +1446,7 @@ const SKILLS={
  V5:{b:2,name:'Undying',cost:4,req:['V4'],desc:'Survive a lethal hit, once / 10 min'}};
 const BRANCHES=['Blade','Sorcery','Survival'];
 const SPELL_NODE={fire:'S1',lightning:'S2',push:'S3',slow:'S4'};
-const HEAVY=['axe','mace','greatsword','maul'];
+const HEAVY_WEAPONS=['axe','mace','greatsword','maul'];
 const DROPS={knight:[.04,['shield','longsword']],brute:[.03,['mace','axe']],bandit:[.01,['spear']]};
 const BOSS_DROPS=['spear','axe','mace','longsword','shield','greatsword','maul'];
 const progDefault=()=>({level:1,xp:0,gold:0,points:1,skills:[],kills:{}});
@@ -1459,7 +1460,7 @@ const PROG={maxLevel:20,manaRegen:5,hpRegen:0,regenDelay:5,cd:{fire:0,push:0,slo
  slowDur(){return 6+(this.has('S4')?2:0);},
  parryMul(){return this.has('B3')?1.5:1;},
  meleeMul(w,e){let m=1;if(this.has('B1'))m*=1.1;if(this.has('B2')){if(e.type==='knight'||e.type==='brute')m*=1.15;if(e.state==='windup')m*=1.25;}
-  if(this.has('B4')&&HEAVY.includes(w.id))m*=1.2;if(this.has('B5')&&e.maxHp&&e.hp<e.maxHp*.2)m*=2;return m;},
+  if(this.has('B4')&&HEAVY_WEAPONS.includes(w.id))m*=1.2;if(this.has('B5')&&e.maxHp&&e.hp<e.maxHp*.2)m*=2;return m;},
  hurt(dmg){if(this.has('V4')&&Math.random()<.15){sfx('whoosh',headPos,.5,1.6);toast('Evaded');return 0;}
   if(this.has('B3')&&hands.some(h=>h.held&&h.held.d.shield))dmg*=.85;
   if(player.hp-dmg<=0&&this.has('V5')&&clock>=this.undyingT){this.undyingT=clock+600;toast('Undying!');sfx('reward',null,.6);fade.hurt=1;return Math.max(0,player.hp-1);}
@@ -1586,7 +1587,7 @@ function onMenu(id){sfx('ui',null,.6);
  if(id.startsWith('ch')){startChapter(+id.slice(2));return;}
  if(id.startsWith('turn-')){SAVE.turn=id.slice(5);save();}
  if(id.startsWith('q-')){SAVE.quality=id.slice(2);QF=QUALITY[SAVE.quality];save();enterHub(true);return;}
- if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false});PROG.reset();for(const k in regionState)delete regionState[k];save();enterHub(true);return;}state.resetArm=clock+3;}
+ if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false});PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
  if(id==='next'){startChapter(state.chapter+1);return;}if(id==='hub'){enterHub();return;}if(id==='retry'){startChapter(state.chapter);return;}
  drawMenu();}
 function showEnd(final){const p=endPanel;p.clear();p.bg();p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[state.chapter-1].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');
