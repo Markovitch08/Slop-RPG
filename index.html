@@ -50,6 +50,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
    <dt>X</dt><dd>Slow time (once learned)</dd>
    <dt>A</dt><dd>Jump</dd>
    <dt>Sticks</dt><dd>Left: move (click to sprint). Right: turn</dd>
+   <dt>Left stick click</dt><dd>Standing still: open / close the world map</dd>
   </dl></section>
   <section><h2>Desktop</h2><dl>
    <dt>Mouse</dt><dd>Look. Hold left button and move to swing</dd>
@@ -58,6 +59,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
    <dt>E</dt><dd>Grab / drop · click menus</dd>
    <dt>1–4</dt><dd>Draw weapon from holster</dd>
    <dt>R / T</dt><dd>Change spell · slow time</dd>
+   <dt>M</dt><dd>Open / close the world map</dd>
   </dl></section>
  </div>
 </div></div>
@@ -556,6 +558,7 @@ function buildWorld(R){
  if(B.crystals)add(scatter(PROP.crystal,B.crystals,{r0:8,r1:70,s0:.5,s1:1.6,mat:MAT_GLOW,collide:.5,avoid:clear(8)}));
  if(B.bones)add(scatter(PROP.bones,B.bones,{r0:3,r1:40,s0:.8,s1:1.3}));
  if(B.near==='spires')add(scatter(PROP.spire,90,{r0:24,r1:80,s0:.8,s1:2.5,collide:1}));
+ W.nSeeded=colliders.length;/* colliders before here are seed-deterministic (camp placement uses only these) */
  dressArena(world,ch);buildGates(world,R);
  buildBackdrop(world);buildWeather(world);
  scene.add(world);AU.biome=B;
@@ -1126,7 +1129,7 @@ class Enemy{
   for(const o of enemies){if(o===this||o.dead)continue;const dx=this.pos.x-o.pos.x,dz=this.pos.z-o.pos.z,d=Math.hypot(dx,dz),m=this.rad+o.rad;if(d<m&&d>1e-4){this.pos.x+=dx/d*(m-d)*.5;this.pos.z+=dz/d*(m-d)*.5;}}
   {const dx=this.pos.x-headPos.x,dz=this.pos.z-headPos.z,d=Math.hypot(dx,dz),m=this.rad+.3;if(d<m&&d>1e-4){this.pos.x+=dx/d*(m-d);this.pos.z+=dz/d*(m-d);}}
   for(const c of colliders){const dx=this.pos.x-c.x,dz=this.pos.z-c.z,d=Math.hypot(dx,dz),m=c.r+this.rad;if(d<m&&d>1e-4){this.pos.x+=dx/d*(m-d);this.pos.z+=dz/d*(m-d);}}
-  const r=Math.hypot(this.pos.x,this.pos.z);if(r>31){this.pos.x*=31/r;this.pos.z*=31/r;}
+  const r=Math.hypot(this.pos.x,this.pos.z);if(r>PLAY_R-2){this.pos.x*=(PLAY_R-2)/r;this.pos.z*=(PLAY_R-2)/r;}
   this.root.position.set(this.pos.x,floorY(this.pos.x,this.pos.z)+this.float,this.pos.z);
   this.pose(dt);
   if(this.state==='strike'&&!this.hitDone&&this.weapon&&this.atkT>this.strikeDur*.2)this.checkHitPlayer();
@@ -1192,7 +1195,7 @@ class Enemy{
  shoot(){const from=this.handL.clone();const tgt=headPos.clone();tgt.y-=.1;const flight=from.distanceTo(tgt)/22;const v=tgt.sub(from).divideScalar(flight);v.y+=.5*9.8*flight;v.x+=rr(-.4,.4)*this.TI.tele;v.y+=rr(-.3,.3)*this.TI.tele;spawnProj('arrow',from,v,this.T.dmg*this.dmgK,this);sfx('bow',from,.7);}
  castOrb(){const from=_v3.lerpVectors(this.handL,this.handR,.5).clone();const v=_v4.subVectors(headPos,from).normalize().multiplyScalar(this.boss?8.5:6.5);spawnProj('orb',from,v.clone(),this.T.dmg*(this.boss?1.4:1)*this.dmgK,this);sfx('magic',from,.5);if(this.isKing){for(const a of [-.3,.3])spawnProj('orb',from,v.clone().applyAxisAngle(UP,a),this.T.dmg*this.dmgK,this);}}
  /* blink 4-6 m to the player's side (never straight behind) */
- blink(){fx.puff(this.parts[1].mid,0x3a2a50,14,1.5,4,.8);sfx('blink',this.pos,.7);const a=Math.atan2(headFwd.x,headFwd.z)+(Math.random()<.5?1:-1)*rr(.6,1.4),d=rr(4,6);this.pos.set(headPos.x+Math.sin(a)*d,0,headPos.z+Math.cos(a)*d);const r=Math.hypot(this.pos.x,this.pos.z);if(r>28)this.pos.multiplyScalar(28/r);fx.puff(_a1.copy(this.pos).setY(floorY(this.pos.x,this.pos.z)+1.2),0x3a2a50,14,1.5,4,.8);sfx('blink',this.pos,.7);this.t=0;this.cool=Math.min(this.cool,1);this.blinkT=rr(6,8);this.st.blink++;}
+ blink(){fx.puff(this.parts[1].mid,0x3a2a50,14,1.5,4,.8);sfx('blink',this.pos,.7);const a=Math.atan2(headFwd.x,headFwd.z)+(Math.random()<.5?1:-1)*rr(.6,1.4),d=rr(4,6);this.pos.set(headPos.x+Math.sin(a)*d,0,headPos.z+Math.cos(a)*d);const r=Math.hypot(this.pos.x,this.pos.z);if(r>PLAY_R-2)this.pos.multiplyScalar((PLAY_R-2)/r);fx.puff(_a1.copy(this.pos).setY(floorY(this.pos.x,this.pos.z)+1.2),0x3a2a50,14,1.5,4,.8);sfx('blink',this.pos,.7);this.t=0;this.cool=Math.min(this.cool,1);this.blinkT=rr(6,8);this.st.blink++;}
  slam(){const c=_v3.copy(this.weapon.b);fx.puff(c,0x9ad0ff,30,4,3,.8);fx.spark(c,0xbfe6ff,30,6,2);sfx('boom',c,1);hands.forEach(h=>buzz(h,.6,120));shockwaves.push({p:c.clone().setY(floorY(c.x,c.z)),r:.2,max:4.2,dmg:22*this.dmgK,hit:false});}
  /* ---------------- damage ---------------- */
  damage(dmg,kind,at,vel,part,src){
@@ -1482,7 +1485,7 @@ function applyStats(full){const p=SAVE.prog;const mhp=100+10*(p.level-1)+(PROG.h
  PROG.manaRegen=5*(PROG.has('V3')?1.25:1);PROG.hpRegen=PROG.has('V2')?2:0;PROG.regenDelay=5;}
 function toast(t){PROG.toast=t;PROG.toastT=2.5;}
 /* XP for a kill: base by type, boss x10, tier factor, level-gap and repeat-kill decay */
-function killXP(e){const t=clamp(Math.round(e.tier||state.tier||1),1,5);const base=(XP_BASE[e.type]||20)*(e.boss?10:1)*(1+.5*(t-1));
+function killXP(e){const t=clamp(Math.round(e.tier||state.tier||1),1,5);const base=(XP_BASE[e.type]||20)*(e.elite?1.5:e.boss?10:1)*(1+.5*(t-1));
  const gap=SAVE.prog.level-(t*4-2);const gm=gap>=6?.1:gap>=3?.4:gap<=-3?1.3:1;
  const key=e.type+'@'+(state.region||state.chapter||0);const arr=PROG.recent[key]=(PROG.recent[key]||[]).filter(x=>clock-x<600);const n=arr.length;const dm=e.boss?1:n>=16?.25:n>=8?.5:1;
  return{xp:Math.max(1,Math.round(base*gm*dm)),key,gap:gm,decay:dm,tier:t};}
@@ -1490,7 +1493,7 @@ function addXP(n){const p=SAVE.prog;if(p.level>=PROG.maxLevel){p.xp=0;return 0;}
  while(p.level<PROG.maxLevel&&p.xp>=PROG.need(p.level)){p.xp-=PROG.need(p.level);p.level++;p.points+=1+(p.level%5===0?1:0);up++;}
  if(p.level>=PROG.maxLevel)p.xp=0;if(up)levelUp(up);return up;}
 function grantKillXP(e){if(!e||e.dummy||e.xpGiven)return 0;e.xpGiven=true;const r=killXP(e);PROG.recent[r.key].push(clock);const p=SAVE.prog;
- p.kills[e.type]=(p.kills[e.type]||0)+1;const gold=e.boss?100*r.tier:r.tier*(3+Math.floor(Math.random()*6));p.gold+=gold;addXP(r.xp);toast(`+${r.xp} XP  +${gold} gold`);
+ p.kills[e.type]=(p.kills[e.type]||0)+1;const gold=e.elite?20*r.tier:e.boss?100*r.tier:r.tier*(3+Math.floor(Math.random()*6));p.gold+=gold;addXP(r.xp);toast(`+${r.xp} XP  +${gold} gold`);
  const drop=rollDrop(e);if(drop){const at=e.parts?.[1]?.mid?e.parts[1].mid.clone():e.pos?e.pos.clone():_v1.copy(headFwd).multiplyScalar(1.5).add(headPos).clone();at.y=floorY(at.x,at.z)+1;dropWeapon(drop,at,!!e.boss);}
  save();return r.xp;}
 function grantReward(r={}){const p=SAVE.prog;if(r.gold)p.gold+=r.gold;if(r.skillPoint)p.points+=r.skillPoint===true?1:r.skillPoint;
@@ -1499,7 +1502,7 @@ function grantReward(r={}){const p=SAVE.prog;if(r.gold)p.gold+=r.gold;if(r.skill
  if(r.xp)addXP(r.xp);save();}
 /* weapons: rare drops, boss drops, shop */
 function rollDrop(e,rnd=Math.random){const own=x=>SAVE.weapons.includes(x);
- if(e.boss){const pool=BOSS_DROPS.filter(x=>!own(x));return pool.length?pool[Math.floor(rnd()*pool.length)]:null;}
+ if(e.boss&&!e.elite){const pool=BOSS_DROPS.filter(x=>!own(x));return pool.length?pool[Math.floor(rnd()*pool.length)]:null;}
  const d=DROPS[e.type];if(!d||rnd()>=d[0])return null;const o=d[1].filter(x=>!own(x));return o.length?o[Math.floor(rnd()*o.length)]:null;}
 function ownWeapon(id){if(SAVE.weapons.includes(id))return false;SAVE.weapons.push(id);save();sfx('reward',null,.6);say(`The ${WDEF[id].name} is yours now. It will wait on the rack in the Lantern Yard.`);return true;}
 const beamGeo=new THREE.CylinderGeometry(.04,.16,3.2,10,1,true),beamMat=new THREE.MeshBasicMaterial({color:0xffd27a,transparent:true,opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,fog:false,toneMapped:false});
@@ -2821,15 +2824,13 @@ function fillRack(){const slots=rackSlots();const owned=id=>weapons.some(w=>w.ow
 function updateNpc(){}
 
 /* ---------- menus ---------- */
-function drawMenu(){const m=menu;m.clear();m.bg();m.text(STORY.hub.name.toUpperCase(),600,74,44,'#e9874a','Cinzel',800,'center');m.text('Choose where the road takes you',600,116,28,'#a89f90','Alegreya Sans',500,'center');
- STORY.chapters.forEach((c,i)=>{const col=i%2,row=Math.floor(i/2),x=60+col*550,y=150+row*150;const open=i<=SAVE.done;const done=i<SAVE.done;
-  m.button('ch'+(i+1),`${c.id}. ${c.name}`,x,y,530,128,{disabled:!open,size:30,sub:open?`${c.biome}${done?' · cleared':''}`:'Locked'});});
+function drawMenu(){const m=menu;m.clear();m.bg();m.text(STORY.hub.name.toUpperCase(),600,74,44,'#e9874a','Cinzel',800,'center');m.text('The realm. Walk a road out through its gate.',600,116,28,'#a89f90','Alegreya Sans',500,'center');
+ drawWorldMap(m,76,140,340,140,14);
  const y=630;m.text('Turning',60,y+44,28,'#a89f90','Alegreya Sans',700);m.button('turn-snap','Snap',200,y,150,64,{active:SAVE.turn==='snap',size:26});m.button('turn-smooth','Smooth',360,y,150,64,{active:SAVE.turn==='smooth',size:26});
  m.text('Detail',580,y+44,28,'#a89f90','Alegreya Sans',700);['high','medium','low'].forEach((q,i)=>m.button('q-'+q,q[0].toUpperCase()+q.slice(1),690+i*160,y,150,64,{active:SAVE.quality===q,size:26}));
  m.text(`Spells: ${SAVE.spells.length?SAVE.spells.map(s=>SPELLS[s].name).join(', '):'none yet'}`,60,y+130,26,'#efe6d2','Alegreya Sans',500);m.text(`World: ${(W.tris/1000).toFixed(0)}k triangles`,60,y+170,22,'#6a6276','Alegreya Sans',500);
  m.button('reset',state.resetArm>clock?'Press again to erase progress':'Reset progress',700,y+120,440,64,{size:24});m.text('Point and pull the trigger to choose',600,960,24,'#6a6276','Alegreya Sans',500,'center');m.update();}
 function onMenu(id){sfx('ui',null,.6);
- if(id.startsWith('ch')){startChapter(+id.slice(2));return;}
  if(id.startsWith('turn-')){SAVE.turn=id.slice(5);save();}
  if(id.startsWith('q-')){SAVE.quality=id.slice(2);QF=QUALITY[SAVE.quality];save();enterHub(true);return;}
  if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false,main:[],quests:{active:{},done:[]}});PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
@@ -2866,18 +2867,19 @@ async function travelTo(id,fromDir,opt={}){
   if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,R.hub?6:7,0);
   player.dead=false;setMusic(R.hub?'hub':'explore');
   if(opt.setup)opt.setup(R);
+  state.arriveDir=fromDir||null;if(!R.hub&&!state.chapter)setupCamps(R);else campRT=[];
   SAVE.region=id;save();
   const wait=1200-(performance.now()-t0);if(wait>0)await sleep(wait);
   loadPanel.mesh.visible=false;state.mode='play';fadeTo(0);
   const rs=regionState[id],first=!rs.visited;rs.visited=true;
-  if(opt.arrive)opt.arrive(R,first);else if(first)say(R.desc);
+  if(opt.arrive)opt.arrive(R,first);else regionArrive(R,first);
  }finally{state.traveling=false;}
  return true;}
 
 /* ---------- hub ---------- */
 async function enterHub(rebuild){
  return travelTo(HUB_ID,null,{arrive:()=>{
-  if(!SAVE.seenIntro){SAVE.seenIntro=true;save();say(STORY.hub.intro);say(['Grab the sword on your hip with your grip button. Walk to the dummy and swing hard. Speed is what cuts.','When you are ready, point at the stone board by the fire and pull the trigger. Or walk any road out through its gate.']);}
+  if(!SAVE.seenIntro){SAVE.seenIntro=true;save();say(STORY.hub.intro);say(['Grab the sword on your hip with your grip button. Walk to the dummy and swing hard. Speed is what cuts.','The stone board by the fire maps the realm. When you are ready, walk any road out through its gate.']);}
   else if(state.justReturned){say(pick(STORY.hub.returnLines));}state.justReturned=false;}});}
 
 /* ---------- chapters ---------- */
@@ -2912,9 +2914,111 @@ function chapterComplete(){const n=state.chapter,C=STORY.chapters[n-1];state.com
  setTimeout(()=>{if(state.chapter===n&&!state.inHub)showEnd(n===6);},n===6?26000:9000);state.justReturned=true;}
 async function onPlayerDeath(){player.dead=true;player.slow=false;fade.target=.85;say(pick(STORY.deathLines),'');hands.forEach(h=>{if(h.cast)endCast(h);});
  await new Promise(r=>setTimeout(r,3200));if(state.inHub){player.dead=false;player.hp=player.maxHp;fadeTo(0);return;}
- state.deaths++;const w=state.wave;for(const e of [...enemies]){if(!e.dead){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}}for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].dead)enemies.splice(i,1);
+ state.deaths++;if(!state.chapter){regionRespawn();return;}const w=state.wave;for(const e of [...enemies]){if(!e.dead){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}}for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].dead)enemies.splice(i,1);
  clearProjectiles();teleportRig(0,7,0);player.hp=player.maxHp;player.mana=player.maxMana;player.focus=100;player.dead=false;fadeTo(0);
  if(w>=0){state.pendingWave=w;state.timer=2.5;state.queue=[];}}
+
+/* ============================== CAMPS & PATROLS: regions are populated by tier ============================== */
+/* regionState[id].camps=[{x,z,kind:'camp'|'grave',members:[types],cleared,t,elite?:name}] is generated once per region (seeded), set pieces are rebuilt on every visit.
+   A camp's group rises when the player comes within CAMP.wake m and the live cap allows; all members dead = cleared; cleared camps respawn on re-entry after CAMP.respawn s. */
+const CAMP_POOL={1:['bandit','archer'],2:['bandit','archer','skeleton'],3:['bandit','archer','skeleton','knight','wraith'],4:['bandit','archer','skeleton','knight','wraith','brute'],5:['bandit','archer','skeleton','knight','wraith','brute']};
+const CAMP_SIZE={1:[2,3],2:[3,3],3:[3,4],4:[3,4],5:[4,5]};
+/* elites use boss scaling; brute is left out because a boss brute is built as the Hollow King */
+const ELITE_TYPES={2:['bandit','skeleton'],3:['knight','wraith'],4:['knight','wraith'],5:['knight','wraith']};
+const ELITE_NAMES={2:['Garran the Red','Mother Sedge','Brother Rook'],3:['Sir Halvard the Rimed','Ysolde Frostwhisper','Captain Vorne'],4:['Morgrave the Unburied','Ulric Ashhand','The Cinder Wife'],5:['Hask the Crown-Sworn','Lady Veyl the Hollow','The Last Warden']};
+const CAMP={cap:7,wake:24,respawn:180,patrol:[40,80]};
+const RANGED=t=>t==='archer'||t==='wraith',UNDEAD=t=>t==='skeleton'||t==='wraith';
+let campRT=[],patrolT=60;
+function seededRng(s){let a=(s|0)||1;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function campPool(tier,kind){const p=CAMP_POOL[tier];if(tier>=5)return p;const f=p.filter(t=>kind==='grave'?UNDEAD(t):!UNDEAD(t));return f.length?f:p;}
+function capRanged(ms,pool,from=0){const maxR=ms.length>=4?2:1,mel=pool.filter(t=>!RANGED(t));let n=ms.filter(RANGED).length;for(let i=ms.length-1;i>=from&&n>maxR;i--)if(RANGED(ms[i])&&mel.length){ms[i]=mel[i%mel.length];n--;}return ms;}
+function campMembers(tier,kind,n,rng){const pool=campPool(tier,kind),out=[];for(let i=0;i<n;i++)out.push(pool[Math.floor(rng()*pool.length)]);return capRanged(out,pool);}
+function genCamps(R){
+ const rng=seededRng(R.seed*7919+R.col*131+R.row*17+1),tier=clamp(R.tier,1,5),camps=[],want=3+Math.floor(rng()*3);
+ const ok=(x,z,pad)=>{const r=Math.hypot(x,z);if(r<14||r>36||roadD(x,z)<6)return false;
+  if(W.gates.some(g=>Math.hypot(x-g.x,z-g.z)<10)||camps.some(c=>Math.hypot(x-c.x,z-c.z)<13))return false;
+  for(let i=0;i<W.nSeeded;i++){const c=colliders[i];if(Math.hypot(x-c.x,z-c.z)<c.r+pad)return false;}
+  if(B.water!==undefined)for(let i=0;i<7;i++){const a=i/6*TAU,d=i?3.5:0;if(groundY(x+Math.cos(a)*d,z+Math.sin(a)*d)<B.water-.3)return false;}
+  return true;};
+ for(const pad of [4,3,2,1.2])for(let k=0;k<160&&camps.length<want;k++){const a=rng()*TAU,r=14+rng()*22,x=Math.cos(a)*r,z=Math.sin(a)*r;if(!ok(x,z,pad))continue;
+  const kind=tier>=2&&rng()<.4?'grave':'camp',sz=CAMP_SIZE[tier],n=sz[0]+Math.floor(rng()*(sz[1]-sz[0]+1));
+  camps.push({x:Math.round(x*100)/100,z:Math.round(z*100)/100,kind,members:campMembers(tier,kind,n,rng),cleared:false,t:0});}
+ if(tier>=2&&camps.length){const c=camps.reduce((a,b)=>Math.hypot(b.x,b.z)>Math.hypot(a.x,a.z)?b:a),et=ELITE_TYPES[tier],fit=et.filter(t=>c.kind==='grave'?UNDEAD(t):!UNDEAD(t)),ty=fit.length?fit:et;
+  c.members[0]=ty[Math.floor(rng()*ty.length)];c.elite=ELITE_NAMES[tier][Math.floor(rng()*ELITE_NAMES[tier].length)];capRanged(c.members,campPool(tier,c.kind),1);}
+ return camps;}
+function buildCampPiece(c,rng){
+ const put=(geo,x,z,ry=0,mat=MAT)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,groundY(x,z),z);m.rotation.y=ry;world.add(m);return m;},cx=c.x,cz=c.z;
+ if(c.kind==='camp'){addFire(world,cx,cz,.8);const nt=1+(rng()<.5?1:0);
+  for(let i=0;i<nt;i++){const a=rng()*TAU,x=cx+Math.cos(a)*3.8,z=cz+Math.sin(a)*3.8;put(tent(['#8a6a4a','#6a5a4a','#7a3a2a'][Math.floor(rng()*3)]),x,z,rng()*TAU);colliders.push({x,z,r:1.7});}
+  for(let i=0;i<2;i++){const a=rng()*TAU,x=cx+Math.cos(a)*1.9,z=cz+Math.sin(a)*1.9;put(merge([G(new THREE.CylinderGeometry(.2,.2,1.7,8),i?'#6a3a2a':'#4a5a3a',{p:[0,.17,0],r:[Math.PI/2,0,0]}),G(new THREE.BoxGeometry(.5,.08,.4),'#8a7a5a',{p:[0,.06,-.95]})]),x,z,a+Math.PI/2);}}
+ else{const stone=()=>G(new THREE.BoxGeometry(.7,2.1,.45),'#6a6862',{p:[0,.95,0],warp:.12});
+  for(let i=0;i<7;i++){const a=i/7*TAU+rng()*.3,x=cx+Math.cos(a)*4.6,z=cz+Math.sin(a)*4.6;put(stone(),x,z,a+rng()*.4).scale.setScalar(.75+rng()*.5);colliders.push({x,z,r:.45});}
+  for(let i=0;i<3;i++){const a=rng()*TAU,d=1.4+rng()*1.6,x=cx+Math.cos(a)*d,z=cz+Math.sin(a)*d;put(merge([G(new THREE.BoxGeometry(.5,.8,.14),'#7a7872',{p:[0,.35,0],warp:.03}),G(new THREE.BoxGeometry(.6,.12,1.2),'#4a3e30',{p:[0,.04,.62],warp:.04})]),x,z,a+rng()*.5);}
+  put(G(new THREE.CylinderGeometry(.35,.45,.7,6),'#5a5854',{p:[0,.35,0]}),cx,cz);put(G(new THREE.OctahedronGeometry(.22,0),'#b48aff',{p:[0,1.05,0]}),cx,cz,0,MAT_GLOW);colliders.push({x:cx,z:cz,r:.5});}}
+function setupCamps(R){campRT=[];patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);if(R.hub||!R.tier)return;const rs=regionState[R.id];
+ if(!rs.camps)rs.camps=genCamps(R);const rng=seededRng(R.seed*31+7);
+ rs.camps.forEach((c,i)=>{if(c.cleared&&clock-c.t>CAMP.respawn)c.cleared=false;buildCampPiece(c,rng);campRT[i]={es:null};});}
+function campSpot(c,j,n){for(let k=0;k<12;k++){const a=j/n*TAU+k*.7+Math.random()*.4,d=2.4+Math.random()*2,x=c.x+Math.cos(a)*d,z=c.z+Math.sin(a)*d;
+  if(colliders.some(o=>Math.hypot(x-o.x,z-o.z)<o.r+.5))continue;if(B.water!==undefined&&groundY(x,z)<B.water-.3)continue;return new V3(x,0,z);}
+ return new V3(c.x+Math.cos(j*2.4)*2.6,0,c.z+Math.sin(j*2.4)*2.6);}
+function spawnCamp(c,rt){rt.es=c.members.map((type,j)=>{const lead=j===0&&c.elite;const e=new Enemy(type,campSpot(c,j,c.members.length),lead||null);e.camp=c;
+  if(lead){e.elite=true;bossPanel.mesh.visible=true;drawBoss(e);}return e;});
+ sfx('spawn',new V3(c.x,groundY(c.x,c.z),c.z),.8);if(c.elite)say(`${c.elite} holds this camp. Bring them down.`);}
+/* story hook: called once when every member of a camp is dead */
+function onCampCleared(R,c){const cs=regionState[R.id].camps;
+ say(c.elite?`${c.elite} is dead. The camp is yours.`:cs.every(k=>k.cleared)?`Every camp in ${R.name} is broken. For now.`:pick(['The camp falls quiet.','That fire burns for no one now.','One camp fewer.']));}
+function updateCamps(dt){
+ if(state.mode!=='play'||state.inHub||state.chapter||state.traveling||player.dead)return;
+ const R=REGION_AT[state.region],cs=regionState[state.region]?.camps;if(!R||!cs)return;
+ cs.forEach((c,i)=>{const rt=campRT[i];if(!rt||c.cleared)return;
+  if(!rt.es){if(Math.hypot(headPos.x-c.x,headPos.z-c.z)<CAMP.wake&&liveCount()+c.members.length<=CAMP.cap)spawnCamp(c,rt);return;}
+  if(rt.es.every(e=>e.dead)){c.cleared=true;c.t=clock;rt.es=null;onCampCleared(R,c);}});
+ if(R.tier>=1){patrolT-=dt;if(patrolT<=0){patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);spawnPatrol(R);}}}
+/* ambient patrol: a pair of the tier's enemies comes up a road from a gate the player is not standing at */
+function spawnPatrol(R){if(liveCount()+2>CAMP.cap)return false;
+ const gs=W.gates.filter(g=>!g.sealed&&Math.hypot(headPos.x-g.x,headPos.z-g.z)>16);if(!gs.length)return false;
+ const g=pick(gs),rd=W.roads.find(r=>r.dir===g.dir);if(!rd)return false;const pool=CAMP_POOL[clamp(R.tier,1,5)];
+ [pick(pool.filter(t=>!RANGED(t))),pick(pool)].forEach((t,j)=>{roadPt(rd,GATE_R-5-j*1.8,_v1);const s=j?1:-1;const e=new Enemy(t,new V3(_v1.x-rd.dz*s*.9,0,_v1.z+rd.dx*s*.9),null);e.patrol=true;});
+ roadPt(rd,GATE_R-5,_v1);sfx('spawn',_v1.clone().setY(groundY(_v1.x,_v1.z)),.6);if(!narrCur&&!narrQ.length)say('Boots on the road. Someone is coming.');return true;}
+/* death in an open-world region: wake at the arrival gate, camps reset, lose a tenth of the purse */
+function regionRespawn(){
+ for(const e of [...enemies]){if(!e.dead){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}}for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].dead)enemies.splice(i,1);
+ clearProjectiles();bossPanel.mesh.visible=false;campRT.forEach(rt=>{if(rt)rt.es=null;});patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);
+ const rd=state.arriveDir&&W.roads.find(r=>r.dir===state.arriveDir);if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,7,0);
+ const p=SAVE.prog,lost=Math.floor((p.gold||0)*.1);p.gold-=lost;save();
+ player.hp=player.maxHp;player.mana=player.maxMana;player.focus=100;player.dead=false;fadeTo(0);
+ say(lost?`You wake by the road, ${lost} gold lighter. Whatever you fought has crept back to its fire.`:'You wake by the road. Whatever you fought has crept back to its fire.');}
+/* story hook: default arrival line for travel without opt.arrive */
+function regionArrive(R,first){if(first)say(R.desc);if(R.hub)return;
+ say(`${R.name}. Danger ${R.tier}. Recommended level ${R.tier*4-2}.`);
+ if(SAVE.prog.level<R.tier*4-4)say(`This land is beyond you. Level ${R.tier*4-2} recommended.`);}
+
+/* ---------- world map: hub board + M / left-stick-click panel ---------- */
+const BIOME_TINT={meadow:'#7aa04a',forest:'#3e7a3a',swamp:'#4a6a4a',snow:'#bcd8ec',castle:'#8a8a90',waste:'#c0502a'};
+function drawLock(g,x,y){g.strokeStyle='#e8c04a';g.fillStyle='#e8c04a';g.lineWidth=5;g.beginPath();g.arc(x,y,11,Math.PI,0);g.stroke();rrect(g,x-17,y,34,26,4);g.fill();g.fillStyle='#1a120c';g.fillRect(x-2,y+8,4,10);}
+function drawWorldMap(p,x0,y0,tw,th,gap){const g=p.g;
+ for(const R of REGIONS){const x=x0+R.col*(tw+gap),y=y0+R.row*(th+gap),rs=regionState[R.id],here=R.id===state.region,sealed=regionSealed(R);
+  rrect(g,x,y,tw,th,12);g.fillStyle=here?'rgba(110,70,42,.95)':rs.visited?'rgba(40,32,50,.94)':'rgba(22,18,28,.94)';g.fill();g.lineWidth=here?6:2;g.strokeStyle=here?'#ffb070':'rgba(233,135,74,.55)';g.stroke();
+  g.fillStyle=BIOME_TINT[R.biome]||'#888';g.fillRect(x+12,y+14,8,th-28);
+  p.text(R.name,x+34,y+42,27,'#efe6d2','Cinzel',800);
+  p.text(R.tier?`Danger ${R.tier} · Level ${R.tier*4-2}`:'Safe',x+34,y+78,25,R.tier>=4?'#e0645a':R.tier?'#e8c04a':'#8ad07a','Alegreya Sans',700);
+  const cs=rs.camps;p.text(sealed?'Sealed':R.hub?'Home':cs?`Camps ${cs.filter(c=>c.cleared).length}/${cs.length}`:'Unexplored',x+34,y+110,24,sealed?'#e8c04a':'#a89f90','Alegreya Sans',600);
+  if(here)p.text('You are here',x+tw-16,y+th-14,23,'#ffd070','Alegreya Sans',800,'right');
+  else if(rs.visited){g.strokeStyle='#8ad07a';g.lineWidth=5;g.beginPath();g.moveTo(x+tw-42,y+th-30);g.lineTo(x+tw-32,y+th-20);g.lineTo(x+tw-16,y+th-40);g.stroke();}
+  if(sealed)drawLock(g,x+tw-36,y+22);}}
+const mapPanel=new Panel(1.3,.78,1200,720,{order:14});mapPanel.mesh.visible=false;let mapT=0;const mapTog={still:false,t:0};
+function drawMapPanel(){const p=mapPanel,R=REGION_AT[state.region],cs=regionState[state.region]?.camps;p.clear();p.bg();
+ p.text('THE REALM OF HOLLOWMERE',600,60,38,'#e9874a','Cinzel',800,'center');drawWorldMap(p,76,90,340,140,14);
+ p.text(`${R.name}${cs?` · camps cleared ${cs.filter(c=>c.cleared).length}/${cs.length}`:''} · Level ${SAVE.prog.level} · ${SAVE.prog.gold} gold`,600,630,28,'#efe6d2','Alegreya Sans',600,'center');
+ p.text(XR?'Click the left stick while standing still to close':'Press M to close',600,684,22,'#6a6276','Alegreya Sans',500,'center');p.update();}
+function openMap(){const m=mapPanel.mesh;_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);m.position.set(_v1.x,headPos.y-.1,_v1.z);m.lookAt(headPos);drawMapPanel();mapT=1;scene.add(m);m.visible=true;sfx('ui',null,.5);}
+function closeMap(){const m=mapPanel.mesh;m.visible=false;if(m.parent)scene.remove(m);}
+function toggleMap(){if(mapPanel.mesh.visible)closeMap();else if(state.mode==='play')openMap();}
+function updateMapPanel(dt){
+ if(XR){const L=hands[0],mv=Math.hypot(L.sx||0,L.sy||0)>.25;if(pressed(L,'stick')){mapTog.still=!mv;mapTog.t=0;}if(L.b.stick){mapTog.t+=dt;if(mv)mapTog.still=false;}if(released(L,'stick')&&mapTog.still&&mapTog.t<.6)toggleMap();}
+ if(!mapPanel.mesh.visible)return;if(state.mode!=='play'||mapPanel.mesh.position.distanceTo(headPos)>3.2){closeMap();return;}
+ mapT-=dt;if(mapT<=0){mapT=1;drawMapPanel();}}
+addEventListener('keydown',e=>{if(!XR&&state.mode==='play'&&e.code==='KeyM')toggleMap();});
 
 /* ============================== UI INTERACTION ============================== */
 function uiInteract(){
@@ -2949,7 +3053,7 @@ function frame(){
  combat(dt);updateProjectiles(dtw);updateShock(dtw);fx.update(dtw);updateBolts(dt);updateWeather(dt,clock);updateWaves(dt);updateNpc(dt);
  if(flames)flames.forEach((f,i)=>{f.scale.setScalar((1+Math.sin(clock*13+i)*.1+Math.sin(clock*7.3)*.06));f.rotation.y+=dt*.6;});if(fireLight.intensity>0)fireLight.intensity=3.5+Math.sin(clock*11)*.5+Math.sin(clock*17)*.3;
  player.invuln=Math.max(0,player.invuln-dt);player.mana=Math.min(player.maxMana,player.mana+(hands.some(h=>h.cast)?PROG.manaRegen*.25:PROG.manaRegen)*dt);if(clock-player.lastHurt>PROG.regenDelay&&!player.dead)player.hp=Math.min(player.maxHp,player.hp+PROG.hpRegen*dt);
- updateProgression(dt);
+ updateProgression(dt);updateCamps(dt);updateMapPanel(dt);
  updateVillagers(dt);
  updateNarr(dt);hudT-=dt;if(hudT<=0){hudT=.1;drawWrist();}
  if(bossPanel.mesh.visible){bossPanel.mesh.position.copy(narrPos).y+=.34;bossPanel.mesh.lookAt(headPos.x,bossPanel.mesh.position.y,headPos.z);}
@@ -2980,6 +3084,7 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
 window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,startChapter,enterHub,startWave,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
 Object.assign(window.HM,{PROG,SKILLS,SPELLS,grantKillXP,grantReward,buyWeapon,rollDrop,spellKnown,spellList,openSkillPanel,closeSkillPanel,toggleSkillPanel,skillPanel,explode});
 Object.assign(window.HM,{VIL,VD,VDLG,VBUB,STORY2,SQ_AT,spawnVillagers,updateVillagers,talkTo,vDlgClick,acceptQuest,turnInQuest,qReady,qAvail,questLine,questOnKill,questOnRegion,sharpenHeld,colliders:()=>colliders,teleportRig});
+Object.assign(window.HM,{CAMP,genCamps,setupCamps,updateCamps,spawnPatrol,regionRespawn,regionArrive,onPlayerDeath,toggleMap,mapPanel,menu,drawMenu,bossPanel,liveCount,roadD,REGION_AT,HUB_ID,teleportRig,clockNow:()=>clock,patrol:{get t(){return patrolT;},set t(v){patrolT=v;}}});
 
 </script>
 </body>
