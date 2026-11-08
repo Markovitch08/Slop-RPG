@@ -47,6 +47,8 @@ module.exports = async ({ page, HM, step, log, assert, shot }) => {
       await step(1);
     } else if (m.t.type === 'talk') {
       if (await HM('HM.state.region') !== m.region) await go(m.region);
+      // stand next to the villager: dialogues close when the player is more than 4 m away
+      await HM(`(()=>{const v=HM.VIL.list.find(u=>u.d.id==="${m.t.npc}");if(v)HM.teleportRig(v.pos.x+1.2,v.pos.z+1.2,0);return 1;})()`);
       await HM(`HM.talkTo("${m.t.npc}")`);
       assert(await HM("HM.VD.end==='main'&&HM.VDLG.mesh.visible"), `talking to ${m.t.npc} opens the main-quest page`);
       for (let i = 0; i < 10 && await HM('!!HM.VD.v'); i++) await HM("HM.vDlgClick(HM.VD.i>=HM.VD.lines.length-1?'bye':'next')");
