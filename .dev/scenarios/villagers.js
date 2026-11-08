@@ -25,6 +25,8 @@ module.exports = async ({ page, HM, step, log, assert, shot }) => {
   await step(1);
   assert(await HM("HM.VIL.list.find(v=>v.d.id==='aldous').markK==='?'"), 'giver shows ? marker');
   const g0 = await HM('HM.SAVE.prog.gold'), x0 = await HM('HM.SAVE.prog.xp+HM.SAVE.prog.level*1e5');
+  // dialogues close beyond 4 m: stand next to the villager first
+  await HM(`(()=>{const v=HM.VIL.list.find(u=>u.d.id==='aldous');if(v)HM.teleportRig(v.pos.x+1.2,v.pos.z+1.2,0);return 1;})()`);
   await HM("HM.talkTo('aldous')");
   assert(await HM("HM.VD.end==='done'"), 'talking to the giver opens the turn-in lines');
   for (let i = 0; i < 6 && await HM('!!HM.VD.v'); i++) await HM("HM.vDlgClick(HM.VD.i>=HM.VD.lines.length-1?'bye':'next')");
@@ -33,6 +35,8 @@ module.exports = async ({ page, HM, step, log, assert, shot }) => {
   // offer dialogue shot: Nell offers Tam's carved fox
   await HM("(()=>{const v=HM.VIL.list.find(v=>v.d.id==='nell');v.pos.set(2,0,4);v.st='idle';v.t=99;HM.teleportRig(2,5.8,0);})()");
   await step(0.5);
+  // dialogues close beyond 4 m: stand next to the villager first
+  await HM(`(()=>{const v=HM.VIL.list.find(u=>u.d.id==='nell');if(v)HM.teleportRig(v.pos.x+1.2,v.pos.z+1.2,0);return 1;})()`);
   await HM("HM.talkTo('nell')");
   assert(await HM("HM.VD.end==='offer'&&HM.VDLG.mesh.visible"), 'quest giver opens an offer dialogue');
   await step(0.3);
@@ -53,6 +57,7 @@ module.exports = async ({ page, HM, step, log, assert, shot }) => {
   await page.waitForFunction(() => !window.HM.state.traveling, null, { timeout: 60000 });
   assert(await HM('HM.VIL.list.length') >= 11, 'villagers respawn on returning to the hub');
   // merchant: buy without and with gold
+  await HM(`(()=>{const v=HM.VIL.list.find(u=>u.d.id==='odo');if(v)HM.teleportRig(v.pos.x+1.2,v.pos.z+1.2,0);return 1;})()`);
   await HM("HM.SAVE.prog.gold=0,HM.talkTo('odo')");
   assert(await HM("HM.VD.mode==='shop'"), 'merchant opens the shop');
   const it = await HM("HM.PROG.shop.find(s=>!s.minLevel&&!HM.SAVE.weapons.includes(s.id))");

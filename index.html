@@ -522,7 +522,7 @@ function buildBlobShadows(extra){
  const dx=-sd.x,dz=-sd.z,dl=Math.hypot(dx,dz)||1,ux=dx/dl,uz=dz/dl,px=-uz,pz=ux;
  const pos=[],uv=[],idx=[],box=new THREE.Box3(),bb=new THREE.Box3(),im=new M4(),wm=new M4();let n=0;
  const quad=(cx,cz,w,d,h)=>{if(Math.hypot(cx,cz)>75||n>=900)return;
-  const len=clamp(h/Math.tan(elev),h*.6,h*2.6)+d*.5,half=w*.55,back=d*.45,b=pos.length/3;
+  const len=clamp(h/Math.tan(elev),h*.5,h*1.8)+d*.5,half=w*.55,back=d*.45,b=pos.length/3;
   for(let j=0;j<=3;j++){const t=j/3,a=-back+t*(len+back);for(let i=0;i<=1;i++){const o=(i?1:-1)*half*(1+t*.25);const x=cx+ux*a+px*o,z=cz+uz*a+pz*o;pos.push(x,groundY(x,z)+.05+t*.02,z);uv.push(i,1-t*.85);}}
   for(let j=0;j<3;j++){const k=b+j*2;idx.push(k,k+1,k+2,k+1,k+3,k+2);}n++;};
  const take=(o,mtx)=>{bb.copy(o.geometry.boundingBox).applyMatrix4(mtx);const h=bb.max.y-bb.min.y,w=bb.max.x-bb.min.x,d=bb.max.z-bb.min.z;
@@ -533,7 +533,7 @@ function buildBlobShadows(extra){
   if(o.isInstancedMesh){if(o.count>1500)continue;for(let i=0;i<o.count;i++){o.getMatrixAt(i,im);take(o,wm.multiplyMatrices(o.matrixWorld,im));}}else take(o,o.matrixWorld);}};
  scan(world.children);if(extra)scan(extra.children);
  if(!n)return;const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);
- const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:shadowTex(),color:0x000000,transparent:true,opacity:.42,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4}));
+ const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:shadowTex(),color:0x000000,transparent:true,opacity:.24,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4}));
  m.userData.noShadow=true;m.renderOrder=1;m.frustumCulled=false;world.add(m);W.shadows=m;}
 
 /* ---------- region gates: stone arch + signpost at GATE_R on each road ---------- */
