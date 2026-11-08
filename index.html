@@ -1085,8 +1085,8 @@ class Enemy{
    case 'approach':case 'engage':{
     if(T.caster){const want=7;if(dist>want+2)move.copy(to),speed=T.speed;else if(dist<want-2)move.copy(to).negate(),speed=T.speed;move.addScaledVector(_v3.set(to.z,0,-to.x),this.strafe*.8);speed=speed||1.2;
      this.cool-=dt;
-     if(this.volley>0){this.volT-=dt;if(this.volT<=0){this.castOrb();this.volley--;this.volT=1.2;}}
-     else if(this.blinkT<=0||(dist<3.2&&this.blinkT<5)){this.state='blink';this.atkT=0;sfx('blinkcue',this.pos,.8);}
+     if(this.blinkT<=0||(dist<3.2&&this.blinkT<5)){this.state='blink';this.atkT=0;sfx('blinkcue',this.pos,.8);}
+     else if(this.volley>0){this.volT-=dt;if(this.volT<=0){this.castOrb();this.volley--;this.volT=1.2;}}
      else if(this.cool<=0&&dist<16){this.state='windup';this.atkT=0;this.windDur=T.windup*TI.tele*(this.boss?.8:1);sfx('charge',this.pos,.5);}
      if(Math.random()<dt*.3)this.strafe*=-1;break;}
     if(T.bow){if(dist>=3)this.retreatT=Math.max(0,this.retreatT-dt);
@@ -1460,7 +1460,7 @@ const PROG={maxLevel:20,manaRegen:5,hpRegen:0,regenDelay:5,cd:{fire:0,push:0,slo
  slowDur(){return 6+(this.has('S4')?2:0);},
  parryMul(){return this.has('B3')?1.5:1;},
  meleeMul(w,e){let m=1;if(this.has('B1'))m*=1.1;if(this.has('B2')){if(e.type==='knight'||e.type==='brute')m*=1.15;if(e.state==='windup')m*=1.25;}
-  if(this.has('B4')&&HEAVY_WEAPONS.includes(w.id))m*=1.2;if(this.has('B5')&&e.maxHp&&e.hp<e.maxHp*.2)m*=2;return m;},
+  if(this.has('B4')&&HEAVY_WEAPONS.includes(w.id))m*=1.2;if(this.has('B5')&&e.maxHp&&e.hp<e.maxHp*.2)m*=2;if(this.sharpMul)m*=this.sharpMul(w.id);return m;},
  hurt(dmg){if(this.has('V4')&&Math.random()<.15){sfx('whoosh',headPos,.5,1.6);toast('Evaded');return 0;}
   if(this.has('B3')&&hands.some(h=>h.held&&h.held.d.shield))dmg*=.85;
   if(player.hp-dmg<=0&&this.has('V5')&&clock>=this.undyingT){this.undyingT=clock+600;toast('Undying!');sfx('reward',null,.6);fade.hurt=1;return Math.max(0,player.hp-1);}
@@ -2832,7 +2832,7 @@ function onMenu(id){sfx('ui',null,.6);
  if(id.startsWith('ch')){startChapter(+id.slice(2));return;}
  if(id.startsWith('turn-')){SAVE.turn=id.slice(5);save();}
  if(id.startsWith('q-')){SAVE.quality=id.slice(2);QF=QUALITY[SAVE.quality];save();enterHub(true);return;}
- if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false});PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
+ if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false,main:[],quests:{active:{},done:[]}});PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
  if(id==='next'){startChapter(state.chapter+1);return;}if(id==='hub'){enterHub();return;}if(id==='retry'){startChapter(state.chapter);return;}
  drawMenu();}
 function showEnd(final){const p=endPanel;p.clear();p.bg();p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[state.chapter-1].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');
@@ -2861,7 +2861,7 @@ async function travelTo(id,fromDir,opt={}){
   clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);bossPanel.mesh.visible=false;
   if(menu.mesh.parent)scene.remove(menu.mesh);if(dummyPanel&&dummyPanel.mesh.parent)scene.remove(dummyPanel.mesh);if(npc){scene.remove(npc.root);npc=null;}dummy=null;
   state.region=id;state.tier=R.tier;state.inHub=!!R.hub;state.chapter=0;state.wave=-1;state.queue=[];state.pendingWave=null;state.waveDone=false;state.complete=false;
-  buildWorld(R);giveLoadout();if(R.hub)setupHub();
+  buildWorld(R);giveLoadout();if(R.hub)setupHub();questOnRegion(R);
   const rd=fromDir&&W.roads.find(r=>r.dir===fromDir);
   if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,R.hub?6:7,0);
   player.dead=false;setMusic(R.hub?'hub':'explore');
@@ -2903,7 +2903,7 @@ function updateWaves(dt){
   if(q.boss){say(STORY.chapters[state.chapter-1].boss.taunt,q.boss);bossPanel.mesh.visible=true;drawBoss(e);}}
  if(!state.queue.length&&liveCount()===0&&state.wave>=0&&!state.waveDone){state.waveDone=true;player.hp=Math.min(player.maxHp,player.hp+30);player.mana=player.maxMana;
   if(state.wave<C.waves.length-1){state.pendingWave=state.wave+1;state.timer=4;setMusic('explore');}else chapterComplete();}}
-function onEnemyDeath(e){if(!e.dummy)grantKillXP(e);if(e.boss&&state.chapter){const C=STORY.chapters[state.chapter-1];if(C.boss)say(C.boss.deathLine,e.bossName);}}
+function onEnemyDeath(e){if(!e.dummy){grantKillXP(e);questOnKill(e);}if(e.boss&&state.chapter){const C=STORY.chapters[state.chapter-1];if(C.boss)say(C.boss.deathLine,e.bossName);}}
 function chapterComplete(){const n=state.chapter,C=STORY.chapters[n-1];state.complete=true;setMusic(n===6?'end':'explore');say(C.outro);
  const r=C.reward;if(r.kind==='weapon'){const id=WEAPON_ID[r.id]||r.id;if(!SAVE.weapons.includes(id))SAVE.weapons.push(id);_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);_v1.y+=.3;const w=spawnWeapon(id,_v1);w.vel.set(0,1,0);}
  else{const id=SPELL_ID[r.id]||r.id;if(!SAVE.spells.includes(id))SAVE.spells.push(id);}

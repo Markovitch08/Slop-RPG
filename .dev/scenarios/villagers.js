@@ -1,5 +1,6 @@
 // Villagers: hub population + wandering, bark bubbles, kill/fetch quest flow, merchant shop, dialogue shot.
 module.exports = async ({ page, HM, step, log, assert, shot }) => {
+  if (await HM('HM.state.region') !== '1,2') { await HM('HM.travelTo(HM.HUB_ID||"1,2")'); await page.waitForFunction(() => !window.HM.state.traveling, null, { timeout: 60000 }); await step(1); }
   await HM('HM.narrQ.length=0');
   const n = await HM('HM.VIL.list.length');
   assert(n >= 11, `hub has >=11 villagers (${n})`);

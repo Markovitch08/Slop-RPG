@@ -24,12 +24,16 @@ module.exports = async ({ HM, step, log, assert }) => {
   for (const tier of [1, 5]) {
     await HM(`(HM.state.tier=${tier},HM.player.hp=5000,1)`);
     for (const [t, dx, dz] of [['bandit', -1, 3], ['knight', 1, 3.5], ['skeleton', 0, 4], ['brute', 2, 4]]) await spawn(t, dx, dz);
-    const hp0 = await HM('HM.player.hp');
-    await step(20);
-    const hp1 = await HM('HM.player.hp');
+    // Progression re-clamps hp to maxHp, so top the player up every second and sum the damage.
+    let taken = 0;
+    for (let k = 0; k < 20; k++) {
+      await HM('(HM.player.dead=false,HM.player.hp=HM.player.maxHp,1)');
+      const a = await HM('HM.player.hp'); await step(1); taken += a - await HM('HM.player.hp');
+    }
+    const hp0 = taken, hp1 = 0;
     const st = await HM('HM.enemies.filter(e=>!e.dead).map(e=>e.type+":"+JSON.stringify(e.st)).join(" ")');
-    log(`tier ${tier} damage taken in 20s:`, Math.round(hp0 - hp1), st);
-    assert(hp1 < hp0, `tier ${tier} enemies attack and hurt the player`);
+    log(`tier ${tier} damage taken in 20s:`, Math.round(taken), st);
+    assert(taken > 0, `tier ${tier} enemies attack and hurt the player`);
     await clear(); await step(.5);
   }
 
@@ -39,9 +43,11 @@ module.exports = async ({ HM, step, log, assert }) => {
   await HM(`(HM._a=HM.enemies[${ai}],HM._wr=HM.enemies[${wi}],1)`);
   let sum = 0, n = 0;
   for (let k = 0; k < 20; k++) {
+    await HM('(HM.player.dead=false,HM.player.hp=HM.player.maxHp,1)');
     await step(1);
     sum += await HM(`(()=>{const e=HM._a;return Math.hypot(e.pos.x-HM.headPos.x,e.pos.z-HM.headPos.z);})()`); n++;
   }
+  log('wraith state', await HM(`JSON.stringify({dead:HM._wr.dead,state:HM._wr.state,blinkT:HM._wr.blinkT,hp:HM._wr.hp})`));
   const blinks = await HM(`HM._wr.st.blink`), shots = await HM(`HM._a.st`);
   log('archer avg distance', (sum / n).toFixed(2), 'wraith blinks', blinks, 'archer', JSON.stringify(shots));
   assert(sum / n >= 4, 'archer keeps >= 4 m on average');
