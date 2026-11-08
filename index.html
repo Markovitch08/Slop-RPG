@@ -235,10 +235,13 @@ function musicTick(){
   AU.step++;AU.nextNote+=beat/4;
  }}
 /* continuous procedural wind: one looping noise source, slow smooth gusts, follows the biome; silent when an ambience file plays */
+function brownNoise(c){if(AU.brown)return AU.brown;const n=c.sampleRate*6,fade=Math.floor(c.sampleRate*.5),raw=new Float32Array(n+fade);let l=0;
+ for(let i=0;i<n+fade;i++){l=(l+.02*(Math.random()*2-1))/1.02;raw[i]=l*3.5;}
+ const b=c.createBuffer(1,n,c.sampleRate),d=b.getChannelData(0);d.set(raw.subarray(0,n));for(let i=0;i<fade;i++){const k=i/fade;d[i]=raw[i]*k+raw[n+i]*(1-k);}return AU.brown=b;}
 function windBed(c,B){const t=c.currentTime;let w=AU.wind;
- if(!w){const s=c.createBufferSource();s.buffer=AU.noise;s.loop=true;const f=c.createBiquadFilter();f.type='bandpass';f.Q.value=.6;f.frequency.value=B.windF;const g=c.createGain();g.gain.value=0;s.connect(f).connect(g).connect(AU.amb);s.start();w=AU.wind={s,f,g,next:0,lvl:0};}
- if(t<w.next)return;w.next=t+rr(1.5,3.5);const on=!AU.cur.amb;const lvl=on?.16*rr(.55,1):0;
- w.g.gain.setTargetAtTime(lvl,t,1.2);w.f.frequency.setTargetAtTime(B.windF*rr(.85,1.6),t,1.5);}
+ if(!w){const s=c.createBufferSource();s.buffer=brownNoise(c);s.loop=true;const f=c.createBiquadFilter();f.type='lowpass';f.Q.value=2.2;f.frequency.value=320;const g=c.createGain();g.gain.value=0;s.connect(f).connect(g).connect(AU.amb);s.start();w=AU.wind={s,f,g,next:0};}
+ if(t<w.next)return;w.next=t+rr(2.5,5);const on=!AU.cur.amb,gust=Math.random();
+ w.g.gain.setTargetAtTime(on?.05+.07*gust:0,t,2.2);w.f.frequency.setTargetAtTime(clamp(B.windF*.55,180,420)*(.8+.9*gust),t,2.5);}
 function updateListener(){if(!AU.ctx)return;const l=AU.ctx.listener;camera.getWorldPosition(_v1);camera.getWorldDirection(_v2);_v3.set(0,1,0).applyQuaternion(camera.getWorldQuaternion(_q1));
  if(l.positionX){l.positionX.value=_v1.x;l.positionY.value=_v1.y;l.positionZ.value=_v1.z;l.forwardX.value=_v2.x;l.forwardY.value=_v2.y;l.forwardZ.value=_v2.z;l.upX.value=_v3.x;l.upY.value=_v3.y;l.upZ.value=_v3.z;}
  else{l.setPosition(_v1.x,_v1.y,_v1.z);l.setOrientation(_v2.x,_v2.y,_v2.z,_v3.x,_v3.y,_v3.z);}}
@@ -510,6 +513,29 @@ function dressArena(group,ch){
   const ap=[[0,-24],[24,0],[-24,0],[0,24]].find(([x,z])=>roadD(x,z)>8)||[0,-24];add(merge(steps),ap[0],ap[1],Math.atan2(ap[0],ap[1])+Math.PI);colliders.push({x:ap[0],z:ap[1],r:4.5});}
 }
 
+/* ---------- baked ground shadows: one merged, terrain-draped soft decal per static object, cast away from the sun ---------- */
+let SHADOW_TEX=null;
+function shadowTex(){if(SHADOW_TEX)return SHADOW_TEX;SHADOW_TEX=canvasTex(64,128,(g,w,h)=>{const gr=g.createRadialGradient(w/2,h*.3,0,w/2,h*.3,w*.5);gr.addColorStop(0,'rgba(0,0,0,1)');gr.addColorStop(.55,'rgba(0,0,0,.75)');gr.addColorStop(1,'rgba(0,0,0,0)');
+ g.save();g.translate(w/2,h*.3);g.scale(1,2.1);g.translate(-w/2,-h*.3);g.fillStyle=gr;g.fillRect(0,0,w,h);g.restore();});return SHADOW_TEX;}
+function buildBlobShadows(extra){
+ if(!world)return;const sd=_v1.copy(sun.position).normalize(),elev=Math.max(.12,Math.asin(clamp(sd.y,-1,1)));
+ const dx=-sd.x,dz=-sd.z,dl=Math.hypot(dx,dz)||1,ux=dx/dl,uz=dz/dl,px=-uz,pz=ux;
+ const pos=[],uv=[],idx=[],box=new THREE.Box3(),bb=new THREE.Box3(),im=new M4(),wm=new M4();let n=0;
+ const quad=(cx,cz,w,d,h)=>{if(Math.hypot(cx,cz)>75||n>=900)return;
+  const len=clamp(h/Math.tan(elev),h*.6,h*2.6)+d*.5,half=w*.55,back=d*.45,b=pos.length/3;
+  for(let j=0;j<=3;j++){const t=j/3,a=-back+t*(len+back);for(let i=0;i<=1;i++){const o=(i?1:-1)*half*(1+t*.25);const x=cx+ux*a+px*o,z=cz+uz*a+pz*o;pos.push(x,groundY(x,z)+.05+t*.02,z);uv.push(i,1-t*.85);}}
+  for(let j=0;j<3;j++){const k=b+j*2;idx.push(k,k+1,k+2,k+1,k+3,k+2);}n++;};
+ const take=(o,mtx)=>{bb.copy(o.geometry.boundingBox).applyMatrix4(mtx);const h=bb.max.y-bb.min.y,w=bb.max.x-bb.min.x,d=bb.max.z-bb.min.z;
+  if(h<.35||w>14||d>14)return;const cx=(bb.min.x+bb.max.x)/2,cz=(bb.min.z+bb.max.z)/2;if(bb.min.y-groundY(cx,cz)>1.2)return;
+  const across=Math.abs(w*px)+Math.abs(d*pz),along=Math.abs(w*ux)+Math.abs(d*uz);quad(cx,cz,Math.max(.35,across),along,h);};
+ const scan=list=>{for(const o of list){if(!o.isMesh||o.userData.noShadow||!o.geometry||o.material===MAT_GLOW||(o.material&&o.material.transparent))continue;
+  if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();o.updateMatrixWorld(true);
+  if(o.isInstancedMesh){if(o.count>1500)continue;for(let i=0;i<o.count;i++){o.getMatrixAt(i,im);take(o,wm.multiplyMatrices(o.matrixWorld,im));}}else take(o,o.matrixWorld);}};
+ scan(world.children);if(extra)scan(extra.children);
+ if(!n)return;const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);
+ const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:shadowTex(),color:0x000000,transparent:true,opacity:.42,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4}));
+ m.userData.noShadow=true;m.renderOrder=1;m.frustumCulled=false;world.add(m);W.shadows=m;}
+
 /* ---------- region gates: stone arch + signpost at GATE_R on each road ---------- */
 function gateLabel(T){return canvasTex(512,128,(g,w,h)=>{g.fillStyle='#4a3626';g.fillRect(0,0,w,h);g.strokeStyle='#22180e';g.lineWidth=10;g.strokeRect(5,5,w-10,h-10);g.fillStyle='#f2e6c8';g.textAlign='center';g.textBaseline='middle';
  let fs=46;const f=()=>g.font=`700 ${fs}px 'Cinzel',serif`;f();while(g.measureText(T).width>w-36&&fs>18){fs-=2;f();}g.fillText(T,w/2,h/2+2);});}
@@ -537,7 +563,7 @@ function updateGates(){
   if(Math.hypot(headPos.x-g.x,headPos.z-g.z)<2.5){travelTo(g.target,OPP_DIR[g.dir]);return;}}}
 
 /* ---------- build / teardown ---------- */
-function disposeWorld(){if(!world)return;scene.remove(world);world.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material!==MAT&&o.material!==MAT_GLOW&&o.material!==MAT_METAL){if(o.material.map)o.material.map.dispose();o.material.dispose();}});world=null;flames=null;W.rack=null;W.water=null;W.gates=[];}
+function disposeWorld(){if(!world)return;scene.remove(world);world.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material!==MAT&&o.material!==MAT_GLOW&&o.material!==MAT_METAL){if(o.material.map)o.material.map.dispose();o.material.dispose();}});world=null;flames=null;W.shadows=null;W.rack=null;W.water=null;W.gates=[];}
 function buildWorld(R){
  disposeWorld();W.region=R;B=BIOMES[R.biome];const sd=B.seed+R.seed*101;seedS=sd*7919;seedN=sd;colliders=[];setupRoads(R);
  const ch=R.hub?'hub':R.chapter?CH_DRESS[R.biome]:null;world=new THREE.Group();world.name='world';
@@ -2885,7 +2911,7 @@ async function travelTo(id,fromDir,opt={}){
   clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);bossPanel.mesh.visible=false;
   if(menu.mesh.parent)scene.remove(menu.mesh);if(dummyPanel&&dummyPanel.mesh.parent)scene.remove(dummyPanel.mesh);if(npc){scene.remove(npc.root);npc=null;}dummy=null;
   state.region=id;state.tier=R.tier;state.inHub=!!R.hub;maxTokens=R.tier>=4?3:2;
-  buildWorld(R);giveLoadout();if(R.hub)setupHub();questOnRegion(R);
+  buildWorld(R);giveLoadout();if(R.hub)setupHub();questOnRegion(R);if(R.hub)buildBlobShadows(VIL.group);
   const rd=fromDir&&W.roads.find(r=>r.dir===fromDir);
   if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,R.hub?6:7,0);
   player.dead=false;setMusic(R.hub?'hub':'explore');
