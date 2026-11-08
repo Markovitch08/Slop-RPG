@@ -276,7 +276,8 @@ const REGION_AT={};for(const R of REGIONS)REGION_AT[R.id]=R;
 const HUB_ID='1,2';
 const DIRS={N:[0,-1],S:[0,1],E:[1,0],W:[-1,0]},OPP_DIR={N:'S',S:'N',E:'W',W:'E'};
 function neighbour(R,dir){const d=DIRS[dir];return REGION_AT[(R.col+d[0])+','+(R.row+d[1])]||null;}
-function regionSealed(R){return !!R.final&&SAVE.done<5;}
+/* a region is sealed until the main step that names it in `unlocks` is done */
+function regionSealed(R){const u=STORY2.main.find(m=>m.unlocks===R.id);return !!u&&!(SAVE.main||[]).includes(u.id);}
 const regionState={};for(const R of REGIONS)regionState[R.id]={visited:false};
 const QUALITY={high:1,medium:.62,low:.36};
 let B=BIOMES.meadow,world=null,colliders=[],QF=1;
@@ -681,7 +682,8 @@ function panelRay(o,d){raycaster.set(o,d);raycaster.far=8;const ms=panels.filter
 /* narration */
 const narr=new Panel(1.5,.42,1200,336,{order:20});scene.add(narr.mesh);narr.mesh.visible=false;
 const narrQ=[];let narrT=0,narrCur=null;const narrPos=new V3();let narrInit=false;
-function say(lines,speaker){for(const l of [].concat(lines))narrQ.push({t:l,s:speaker||STORY.mentor.name});}
+/* speaker: omitted = the mentor, '' = narrator (no name) */
+function say(lines,speaker){for(const l of [].concat(lines))narrQ.push({t:l,s:speaker==null?STORY2.mentor.name:speaker});}
 function drawNarr(){narr.clear();if(!narrCur)return;narr.bg();narr.text(narrCur.s.toUpperCase(),48,70,30,'#e9874a','Cinzel',800);narr.text(narrCur.t,48,128,40,'#efe6d2','Alegreya Sans',500,'left',1100);narr.update();}
 function updateNarr(dt){
  if(!narrCur&&narrQ.length){narrCur=narrQ.shift();narrT=clamp(narrCur.t.length*.07,3.2,8);drawNarr();narr.mesh.visible=true;narr.mesh.material.opacity=0;}
@@ -693,12 +695,12 @@ function updateNarr(dt){
 /* wrist HUD */
 const wrist=new Panel(.12,.0975,320,260,{order:15});wrist.mesh.material.depthTest=true;
 let wristKey='';
-function drawWrist(){const pg=SAVE.prog,cdl=['fire','push','slow'].filter(spellKnown).map(s=>[s,Math.max(0,(PROG.cd[s]||0)-clock)]);const k=[Math.ceil(player.hp),Math.floor(player.mana),Math.floor(player.focus),hands[0].spell,hands[1].spell,spellList().length,player.slow,pg.level,pg.xp,pg.gold,pg.points,cdl.map(c=>c[1].toFixed(1)),questLine()].join();if(k===wristKey)return;wristKey=k;
+function drawWrist(){const pg=SAVE.prog,cdl=['fire','push','slow'].filter(spellKnown).map(s=>[s,Math.max(0,(PROG.cd[s]||0)-clock)]);const k=[Math.ceil(player.hp),Math.floor(player.mana),Math.floor(player.focus),hands[0].spell,hands[1].spell,spellList().length,player.slow,pg.level,pg.xp,pg.gold,pg.points,cdl.map(c=>c[1].toFixed(1)),mainLine(),questLine()].join();if(k===wristKey)return;wristKey=k;
  wrist.clear();wrist.bg('rgba(14,11,20,.9)','rgba(233,135,74,.5)');const bar=(y,v,c,l,bh=20)=>{const g=wrist.g;g.fillStyle='rgba(255,255,255,.12)';g.fillRect(70,y,230,bh);g.fillStyle=c;g.fillRect(70,y,230*clamp(v,0,1),bh);wrist.text(l,18,y+bh-2,20,'#a89f90','Alegreya Sans',700);};
  bar(16,player.hp/player.maxHp,'#d6463e','HP');bar(42,player.mana/player.maxMana,'#4a86e8','MP');if(spellKnown('slow'))bar(68,player.focus/100,'#e8c04a','TIME');
  bar(96,pg.level>=PROG.maxLevel?1:pg.xp/PROG.need(pg.level),'#b48aff','Lv'+pg.level,14);wrist.text(`${pg.gold} gold${pg.points?` · ${pg.points} skill pt`:''}`,18,138,22,'#e8c04a','Alegreya Sans',700);
  const sp=h=>{const l=spellList();return l.length?SPELLS[l[h.spell%l.length]].name:'—';};wrist.text(`L ${sp(hands[0])} · R ${sp(hands[1])}`,18,168,22,'#efe6d2','Alegreya Sans',600);
- wrist.text(cdl.filter(c=>c[1]>0).map(c=>`${SPELLS[c[0]].name.split(' ')[0]} ${c[1].toFixed(1)}`).join(' · '),18,198,20,'#a89f90','Alegreya Sans',600);wrist.text(questLine(),18,238,18,'#e8c04a','Alegreya Sans',700,'left');wrist.update();}
+ wrist.text(cdl.filter(c=>c[1]>0).map(c=>`${SPELLS[c[0]].name.split(' ')[0]} ${c[1].toFixed(1)}`).join(' · '),18,198,20,'#a89f90','Alegreya Sans',600);const ml=mainLine(),ql=questLine();let wy=ml?wrist.text(ml,18,ql?214:228,17,'#ffd27a','Alegreya Sans',700,'left',290)+20:238;if(ql)wrist.text(ql,18,Math.min(254,wy),15,'#e8c04a','Alegreya Sans',600,'left');wrist.update();}
 function attachWrist(){const h=hands[0];h.grip.add(wrist.mesh);wrist.mesh.position.set(.0,.045,.09);wrist.mesh.rotation.set(-Math.PI/2.4,0,0);if(!XR){wrist.mesh.position.set(0,.06,.02);wrist.mesh.rotation.set(-.6,0,0);}}
 /* boss bar & enemy health bars */
 const bossPanel=new Panel(1.1,.12,880,96,{order:19});bossPanel.mesh.visible=false;scene.add(bossPanel.mesh);
@@ -995,7 +997,7 @@ function buildEnemy(type,boss){
  root.scale.setScalar(s);scene.add(root);return{root,N,s};}
 class Enemy{
  constructor(type,pos,boss){const T=ETYPE[type];this.type=type;this.T=T;this.boss=!!boss;const b=buildEnemy(type,boss);Object.assign(this,b);
-  this.pos=new V3().copy(pos);this.vel=new V3();this.yaw=Math.atan2(-pos.x,-pos.z);this.tier=Math.min(5,clamp(state.tier||state.chapter||1,1,5)+(boss?1:0));this.TI=TIER[this.tier-1];this.ai=T.ai;const tk=this.tier-1;
+  this.pos=new V3().copy(pos);this.vel=new V3();this.yaw=Math.atan2(-pos.x,-pos.z);this.tier=Math.min(5,clamp(state.tier||1,1,5)+(boss?1:0));this.TI=TIER[this.tier-1];this.ai=T.ai;const tk=this.tier-1;
   this.poise=T.poise*(1+.15*tk);this.dmgK=1+.2*tk;this.tokenCap=this.TI.tokens;this.guardP=clamp(T.block*this.TI.block*(boss?1.2:1),0,.95);this.holdR=T.reach*(boss?1.2:1)+(T.ai.relentless?rr(.15,.3):rr(.35,.7));
   this.maxHp=this.hp=T.hp*(boss?(type==='brute'?5.2:4.5):1)*(1+.35*tk);this.rad=.32*this.s;
   this.state='spawn';this.t=0;this.cool=rr(.8,2)*this.TI.cool;this.closeT=0;this.stepT=0;this.stepV=new V3();this.backCD=0;this.backN=0;this.dodgeCD=0;this.dodgeT=-1;this.dodgeDir=new V3();this.counterT=0;this.gbN=0;this.gbT=-9;this.parryN=0;this.recoilT=0;this.retreatQ=false;this.retreatT=0;this.nearT=0;this.feint=false;this.bash=false;this.feintK=0;this.cued=false;this.volley=0;this.volT=0;this.blinkT=rr(6,8);this.voiced=false;this.bp=[[0,0,0],[0,0,0]];this.blockSh=null;
@@ -1487,7 +1489,7 @@ function toast(t){PROG.toast=t;PROG.toastT=2.5;}
 /* XP for a kill: base by type, boss x10, tier factor, level-gap and repeat-kill decay */
 function killXP(e){const t=clamp(Math.round(e.tier||state.tier||1),1,5);const base=(XP_BASE[e.type]||20)*(e.elite?1.5:e.boss?10:1)*(1+.5*(t-1));
  const gap=SAVE.prog.level-(t*4-2);const gm=gap>=6?.1:gap>=3?.4:gap<=-3?1.3:1;
- const key=e.type+'@'+(state.region||state.chapter||0);const arr=PROG.recent[key]=(PROG.recent[key]||[]).filter(x=>clock-x<600);const n=arr.length;const dm=e.boss?1:n>=16?.25:n>=8?.5:1;
+ const key=e.type+'@'+(state.region||0);const arr=PROG.recent[key]=(PROG.recent[key]||[]).filter(x=>clock-x<600);const n=arr.length;const dm=e.boss?1:n>=16?.25:n>=8?.5:1;
  return{xp:Math.max(1,Math.round(base*gm*dm)),key,gap:gm,decay:dm,tier:t};}
 function addXP(n){const p=SAVE.prog;if(p.level>=PROG.maxLevel){p.xp=0;return 0;}p.xp+=Math.round(n);let up=0;
  while(p.level<PROG.maxLevel&&p.xp>=PROG.need(p.level)){p.xp-=PROG.need(p.level);p.level++;p.points+=1+(p.level%5===0?1:0);up++;}
@@ -1518,7 +1520,7 @@ function levelUp(n){const p=SAVE.prog;applyStats(true);sfx('reward',null,.9);
  const L=lvlPanel;L.clear();L.bg('rgba(20,14,8,.9)','rgba(255,200,90,.95)');L.text('LEVEL '+p.level,440,130,96,'#ffd27a','Cinzel',800,'center');L.text(`+${10*n} HP · +${8*n} MP · ${p.points} skill point${p.points===1?'':'s'} to spend`,440,200,34,'#efe6d2','Alegreya Sans',600,'center');L.update();
  _v1.copy(headFwd).multiplyScalar(1.8).add(headPos);L.mesh.position.set(_v1.x,headPos.y+.25,_v1.z);L.mesh.lookAt(headPos);L.mesh.visible=true;lvlT=3.5;
  _v2.copy(headFwd).multiplyScalar(.9).add(headPos);fx.spark(_v2,0xffd27a,60,4,2,-1);for(let i=0;i<12;i++){const a=i/12*TAU;fx.spark(_v3.set(headPos.x+Math.sin(a)*.8,rig.position.y+.1,headPos.z+Math.cos(a)*.8),0xffe6a0,4,2,1.5,-3);}
- say(`Level ${p.level}. You grow stronger. ${XR?'Hold Y':'Press K'} to spend your skill points.`);}
+ say(`${pick(STORY2.levelUpLines)} Level ${p.level}. ${XR?'Hold Y':'Press K'} to spend your skill points.`);}
 /* skill tree panel */
 const skillPanel=new Panel(1.44,1.0,1280,890,{interactive:true,order:14});skillPanel.mesh.visible=false;
 function drawSkillPanel(){const P=skillPanel,p=SAVE.prog;P.clear();P.bg('rgba(14,11,20,.93)');
@@ -2521,6 +2523,8 @@ const STORY2 = {
 /* villagers: one body per STORY2 npc (villagerGeo, same bone layout as bodyGeo), wander/idle/chat AI, bark bubbles, quest markers, dialogue/shop panels.
    quests: SAVE.quests={active:{id:{n,got,killed}},done:[ids]}; hooks questOnKill(enemy) and questOnRegion(R) are called by the combat / travel code. */
 SAVE.main=SAVE.main||[];SAVE.quests=SAVE.quests||{active:{},done:[]};
+/* old saves counted chapters in SAVE.done (1..6); map them onto main steps once. Afterwards SAVE.done mirrors SAVE.main.length */
+if(!SAVE.mainMig){if(!SAVE.main.length&&SAVE.done>0)SAVE.main=STORY2.main.slice(0,[0,1,3,5,6,8,10][Math.min(6,SAVE.done)]).map(m=>m.id);SAVE.mainMig=true;}SAVE.done=SAVE.main.length;
 PROG.sharpMul=id=>(SAVE.prog.sharp&&SAVE.prog.sharp[id])||1;
 const NPC_AT={},SQ_AT={};for(const n of STORY2.npcs)NPC_AT[n.id]=n;for(const q of STORY2.sidequests)SQ_AT[q.id]=q;
 const VROLE={lamplighter:{hair:'swept',prop:'lamp',old:1},blacksmith:{hair:'crop',bulk:1.16,prop:'hammer',kind:'smith'},merchant:{hair:'short',belly:1,satchel:1,kind:'shop'},
@@ -2635,7 +2639,7 @@ function spawnVillagers(rid){if(VIL.group&&VIL.region===rid&&npc&&npc.root===VIL
   for(let i=0;i<5;i++){const a=i/5*TAU;VIL.poi.push([Math.cos(a)*2.6,Math.sin(a)*2.6]);}VIL.poi.push([VPOS.well[0]+1.5,VPOS.well[1]],[VPOS.stall[0]-.8,VPOS.stall[1]-2],[-2.5,4],[6,3]);
   for(const rd of W.roads)for(const t of[11,16]){roadPt(rd,t,_vv);VIL.poi.push([_vv.x-rd.dz*1.6,_vv.z+rd.dx*1.6]);}}
  VIL.poi=VIL.poi.filter(([x,z])=>vilFree(x,z,.5));
- const list=STORY2.npcs.filter(n=>n.region===rid);
+ const fin=mainFinished(),list=STORY2.npcs.filter(n=>n.region===rid&&!(fin&&n.id==='idris')).map(n=>fin&&n.id==='wren'?{...n,barks:WREN_LAMP.concat(n.barks)}:n);
  list.forEach((n,i)=>{const b=buildVillager(n);g.add(b.root);const L=b.L;let kind=L.kind||'wander';if(n.id==='idris')kind='mentor';if(!hub)kind='stay';
   let home;if(kind==='smith')home=new V3(VPOS.forge[0]+.9,0,VPOS.forge[1]+.6);else if(kind==='shop'){const[x,z]=VPOS.stall,l=Math.hypot(x,z);home=new V3(x+x/l*.9,0,z+z/l*.9);}else if(kind==='mentor')home=new V3(...[VPOS.board[0],0,VPOS.board[1]]);
   else if(kind==='stay')home=vilSpot(n.id,5,8,3);else{const p=VIL.poi[(i*3)%VIL.poi.length]||[i,4];home=new V3(p[0],0,p[1]);}
@@ -2733,15 +2737,16 @@ function vLines(v,lines,end,q,spk){Object.assign(VD,{mode:'lines',lines:[].conca
 function vTurnInFor(v){const s=QS();for(const id in s.active){const q=SQ_AT[id];if(q.type==='deliver'?q.params.to===v.d.id:q.giver===v.d.id&&qReady(q))return q;}return null;}
 function vOfferFor(v){return STORY2.sidequests.find(q=>q.giver===v.d.id&&qAvail(q))||null;}
 function talkTo(v){if(typeof v==='string')v=VIL.list.find(u=>u.d.id===v);if(!v)return false;v.face=true;v.talkT=clock;
+  const mm=mainTalkFor(v);if(mm){vLines(v,mm.doneLines,'main',mm,mainSpk(mm.doneSpeaker==null?v.d.id:mm.doneSpeaker));return true;}
  const ti=vTurnInFor(v);if(ti){vLines(v,ti.doneLines,'done',ti,ti.doneSpeaker!=null?(ti.doneSpeaker?vName(ti.doneSpeaker):'Narrator'):v.d.name);return true;}
  if(v.kind==='shop'){VD.mode='shop';vDlgOpen(v);return true;}if(v.d.role==='blacksmith'){VD.mode='smith';vDlgOpen(v);return true;}
  const of=vOfferFor(v);if(of){vLines(v,of.offerLines,'offer',of);return true;}
  const act=STORY2.sidequests.find(q=>q.giver===v.d.id&&QS().active[q.id]);if(act){vLines(v,[act.progressLine],'bye',act);return true;}
- vLines(v,[v.kind==='mentor'&&SAVE.done<6?pick(STORY.hub.returnLines):vBarkLine(v)],'bye',null);return true;}
+ vLines(v,[vBarkLine(v)],'bye',null);return true;}
 function drawDlg(){const p=VDLG,v=VD.v;if(!v)return;const keep=p.hover;p.clear();p.hover=keep;p.bg();
  p.text((VD.mode==='lines'?VD.spk:v.d.name).toUpperCase(),40,62,30,'#e9874a','Cinzel',800);p.text(VD.q&&VD.mode==='lines'?VD.q.title:v.d.role[0].toUpperCase()+v.d.role.slice(1),840,60,24,'#a89f90','Alegreya Sans',600,'right');
  if(VD.mode==='lines'){p.text(VD.lines[VD.i]||'',40,124,32,'#efe6d2','Alegreya Sans',500,'left',800);const last=VD.i>=VD.lines.length-1;
-  if(VD.q&&last&&(VD.end==='offer'||VD.end==='done')){const r=VD.q.reward;p.text(`${VD.end==='offer'?'Reward':'Received'}: ${r.xp} XP · ${r.gold} gold${r.weapon?' · '+WDEF[WEAPON_ID[r.weapon]||r.weapon].name:''}${r.skillPoint?' · skill point':''}`,40,350,24,'#e8c04a','Alegreya Sans',700);}
+  if(VD.q&&last&&(VD.end==='offer'||VD.end==='done'||VD.end==='main')){const r=VD.q.reward;p.text(`${VD.end==='offer'?'Reward':'Received'}: ${r.xp} XP · ${r.gold} gold${r.weapon?' · '+WDEF[WEAPON_ID[r.weapon]||r.weapon].name:''}${r.spell?' · '+((SPELLS[SPELL_ID[r.spell]||r.spell]||{}).name||r.spell):''}${r.skillPoint?' · skill point':''}`,40,350,24,'#e8c04a','Alegreya Sans',700);}
   if(!last)p.button('next','Next',600,390,240,72,{size:30});else if(VD.end==='offer'){p.button('accept','Accept',360,390,240,72,{size:30});p.button('later','Not now',620,390,220,72,{size:28});}else p.button('bye','Farewell',600,390,240,72,{size:30});}
  if(VD.mode==='shop'){p.text(`Your gold: ${SAVE.prog.gold}`,40,104,26,'#e8c04a','Alegreya Sans',700);PROG.shop.forEach((it,i)=>{const y=122+i*44,own=SAVE.weapons.includes(it.id),lv=it.minLevel&&SAVE.prog.level<it.minLevel;
    p.text(WDEF[it.id]?WDEF[it.id].name:it.id,40,y+30,26,lv?'#8a8090':'#efe6d2','Alegreya Sans',600);p.text(`${it.price} g`,420,y+30,26,'#e8c04a','Alegreya Sans',700);p.text(it.minLevel?`Lv ${it.minLevel}`:'',540,y+30,22,lv?'#e0645a':'#a89f90','Alegreya Sans',600);
@@ -2758,7 +2763,7 @@ function vHeld(){for(const h of[hands[1],hands[0]])if(h.held&&WDEF[h.held.id]&&!
 function sharpenHeld(){const w=vHeld();if(!w)return{ok:false,reason:'hold a weapon'};const sp=SAVE.prog.sharp=SAVE.prog.sharp||{},m=sp[w.id]||1;if(m>=1.5)return{ok:false,reason:'already razor sharp'};
  if(SAVE.prog.gold<VSHARP)return{ok:false,reason:'not enough gold'};SAVE.prog.gold-=VSHARP;sp[w.id]=Math.round((m+.1)*10)/10;save();sfx('reward',null,.5);return{ok:true,mult:sp[w.id]};}
 function vDlgClick(id){const v=VD.v;if(!v)return;sfx('ui',null,.5);
- if(id==='next'){VD.i++;}else if(id==='accept'){acceptQuest(VD.q.id);vDlgClose();return;}else if(id==='later'||id==='bye'){if(VD.end==='done'&&VD.q){turnInQuest(VD.q.id);VD.q=null;}vDlgClose();return;}
+ if(id==='next'){VD.i++;}else if(id==='accept'){acceptQuest(VD.q.id);vDlgClose();return;}else if(id==='later'||id==='bye'){if(VD.end==='done'&&VD.q){turnInQuest(VD.q.id);VD.q=null;}else if(VD.end==='main'&&VD.q){const m=VD.q;VD.q=null;vDlgClose();mainComplete(m,true);return;}vDlgClose();return;}
  else if(id.startsWith('buy:')){const r=buyWeapon(id.slice(4));VD.msg=r.ok?`${WDEF[id.slice(4)].name} bought. It waits on the rack.`:`Cannot buy: ${r.reason}.`;}
  else if(id==='talk'){vLines(v,[vBarkLine(v)],'back',null);return;}else if(id==='work'){const of=vOfferFor(v);if(of)vLines(v,of.offerLines,'offer',of);return;}
  else if(id==='sharpen'){const r=sharpenHeld();VD.msg=r.ok?`Edge honed: x${r.mult.toFixed(1)} damage.`:`No: ${r.reason}.`;}
@@ -2789,31 +2794,23 @@ function updateVillagers(dt){
    v.lookT-=dt;if(v.lookT<=0){v.lookT=rr(1.5,4);v.lookY=v.st==='walk'?rr(-.2,.2):rr(-.7,.7);}
    v.headY=lerp(v.headY,v.st==='chat'?0:v.lookY,Math.min(1,dt*2));if(v.st!=='chat')v.headX=lerp(v.headX,0,Math.min(1,dt*2));if(!far)vAnim(v,dt,v.st==='walk');}
   vPlace(v);
-  v.barkCD-=dt;if(v.kind==='mentor'){v.talkT2=(v.talkT2||0)-dt;if(v.talkT2<=0&&dp<2.6&&!narrCur&&!narrQ.length&&state.inHub){v.talkT2=25;say(SAVE.done>=6?STORY.ending.slice(-2):pick(STORY.hub.returnLines));}}
+  v.barkCD-=dt;if(v.kind==='mentor'){v.talkT2=(v.talkT2||0)-dt;if(v.talkT2<=0&&dp<2.6&&!narrCur&&!narrQ.length&&!MQ.pend.length&&state.inHub){v.talkT2=45;const m=mainCur();say(m&&m.trigger.npc!=='idris'?m.objective:vBarkLine(v));}}
   else if(v.barkCD<=0&&dp<4&&nb<2&&VD.v!==v&&!VBUB.some(b=>b.v===v)){if(vBark(v))nb++;}}
  vBubbles(dt);vPickups(dt);
- VIL.markT-=dt;if(VIL.markT<=0){VIL.markT=.5;for(const v of VIL.list){const k=vTurnInFor(v)?'?':vOfferFor(v)?'!':'';if(k!==v.markK){v.markK=k;if(v.mark){v.root.remove(v.mark);v.mark=null;}
+ VIL.markT-=dt;if(VIL.markT<=0){VIL.markT=.5;for(const v of VIL.list){const k=mainTalkFor(v)||vTurnInFor(v)?'?':vOfferFor(v)?'!':'';if(k!==v.markK){v.markK=k;if(v.mark){v.root.remove(v.mark);v.mark=null;}
   if(k){v.mark=new THREE.Sprite(VMARK[k]);v.mark.scale.set(.2/v.s,.3/v.s,1);v.root.add(v.mark);}}}}
  for(const v of VIL.list)if(v.mark)v.mark.position.y=(v.L.prop==='spear'||v.L.prop==='pole'?2.55:2.25)+Math.sin(clock*2.5)*.05;
  if(VD.v&&(Math.hypot(hx-VD.v.pos.x,hz-VD.v.pos.z)>4||!VIL.list.includes(VD.v)))vDlgClose();
- if(!XR){if(!VIL.hq){VIL.hq=document.createElement('div');VIL.hq.style.cssText="position:fixed;left:16px;bottom:44px;font:600 14px 'Alegreya Sans';color:#e8c04a;text-shadow:0 1px 3px #000;pointer-events:none";document.body.appendChild(VIL.hq);}
-  const t=questLine();VIL.hq.style.display=$('#hudD').style.display==='block'&&t?'block':'none';if(VIL.hq.textContent!==t)VIL.hq.textContent=t;}}
+ if(!XR){if(!VIL.hq){VIL.hq=document.createElement('div');VIL.hq.style.cssText="position:fixed;left:16px;bottom:44px;white-space:pre-line;font:600 14px 'Alegreya Sans';color:#e8c04a;text-shadow:0 1px 3px #000;pointer-events:none";document.body.appendChild(VIL.hq);}
+  const t=[mainLine()&&'Main: '+mainLine(),questLine()].filter(Boolean).join('\n');VIL.hq.style.display=$('#hudD').style.display==='block'&&t?'block':'none';if(VIL.hq.textContent!==t)VIL.hq.textContent=t;}}
 
 /* ============================== STORY ============================== */
-const STORY={"title": "Hollowmere: The Cold Crown", "tagline": "Cut through the frost-crowned dead to break the Hollow King's grip.", "mentor": {"name": "Idris Vane", "description": "A grey-bearded lamplighter who once served the Hollow King and now hunts what he left behind."}, "hub": {"name": "The Lantern Yard", "biome": "dawn meadow", "intro": ["Welcome to Hollowmere. The frost came out of the wood three winters ago and has not left.", "The Hollow King wears a crown of ice, and every dead thing that wakes in the wood answers to it.", "Your blade is steady. Take the road into the wood, and bring back what you find."], "returnLines": ["The frost pulled back a little. Rest, then go again.", "Another stretch of road is clear. The King will notice."]}, "chapters": [{"id": 1, "name": "The Edge of the Wood", "biome": "deep forest day", "objective": "Clear the bandit camp at the forest edge.", "intro": ["The wood was ours once. Now the trees hold bandits and worse.", "Keep your dagger for close work. The longsword will handle the rest.", "Stay on your feet. Bandits rush before they talk."], "waves": [{"enemies": {"bandit": 2}, "line": "Two bandits by the fallen log. Let them come to you."}, {"enemies": {"bandit": 1, "bandit archer": 2}, "line": "Archers in the roots. Close the distance fast."}, {"enemies": {"skeleton": 2, "bandit": 1}, "line": "Something under the leaves is rising. Skeletons. Hold your ground."}], "boss": null, "outro": ["The camp is quiet now. Someone was keeping a ledger of the dead.", "Take the ledger. It names the King's next target at the black water."], "reward": {"kind": "spell", "id": "fireball"}}, {"id": 2, "name": "Black Water Ferry", "biome": "swamp dusk", "objective": "Cross the marsh and break the skeleton line at the ferry.", "intro": ["The marsh swallows sound and light. Watch your footing.", "The ferry is the King's road north. Whoever holds it holds the wood.", "Skeletons walk the reeds like they remember the way."], "waves": [{"enemies": {"skeleton": 2, "bandit": 1}, "line": "Three of them, moving through the reeds."}, {"enemies": {"bandit archer": 1, "skeleton": 2}, "line": "Archer on the ferry post. Get low and close the gap."}, {"enemies": {"armored knight": 1, "skeleton": 3}, "line": "A knight with a shield walks out of the mist. Go for his feet."}], "boss": null, "outro": ["The ferry is broken and the far bank is ours. For now.", "A knight's shield was left on the dock. Someone wanted you to find it."], "reward": {"kind": "weapon", "id": "round shield"}}, {"id": 3, "name": "The Frozen Pass", "biome": "snowy pass night with aurora", "objective": "Defeat Halvard the Unbent at the top of the pass.", "intro": ["The snow here does not melt, even at noon.", "The wraiths above are the King's eyes. Dodge their dark orbs and close in.", "Something heavy is coming down the ridge. Hold your ground when it arrives."], "waves": [{"enemies": {"wraith": 1, "skeleton": 2, "bandit archer": 1}, "line": "Wraiths above the drifts. Keep moving so their orbs miss."}, {"enemies": {"brute": 1, "skeleton": 2, "bandit": 1}, "line": "A brute is climbing the switchbacks. Watch his mace swing."}, {"enemies": {"armored knight": 1, "skeleton": 2, "wraith": 1, "bandit archer": 1}, "line": "Halvard is here. He was a knight of the crown. Do not let him set the pace."}], "boss": {"name": "Halvard the Unbent", "type": "armored knight", "taunt": ["I swore an oath to the crown. You will not pass.", "Stand still and let the cold settle in."], "deathLine": "The oath ends here. Let the snow take me."}, "outro": ["The pass is open. The aurora above is green for the first time in months.", "Beyond the pass, the keep of Ashgrave rises out of the storm."], "reward": {"kind": "spell", "id": "lightning"}}, {"id": 4, "name": "Ashgrave Keep", "biome": "ruined castle thunderstorm", "objective": "Fight through the courtyard and reach the keep stairs.", "intro": ["Ashgrave kept its bells for a hundred years, until the King came for them.", "Storm on the walls, and the dead are on the stairs.", "The keep has one way up, through the courtyard and the gate."], "waves": [{"enemies": {"bandit": 2, "brute": 1, "skeleton": 1}, "line": "A brute waits by the gate. Stay out of his swing arc."}, {"enemies": {"wraith": 2, "armored knight": 1, "skeleton": 2}, "line": "Wraiths in the arrow slits. Keep moving through the courtyard."}, {"enemies": {"brute": 1, "skeleton": 3, "bandit archer": 1}, "line": "Thunder, then the keep wakes up. Hold the stairs."}], "boss": null, "outro": ["The gate is open. Thunder rolls over the courtyard and the bells are finally quiet.", "The stairs lead toward the throne. The air up there tastes like frost."], "reward": {"kind": "spell", "id": "slow time"}}, {"id": 5, "name": "The Siege Meadow", "biome": "dawn meadow", "objective": "Break the siege lines before the sun clears the hill.", "intro": ["This meadow fed Hollowmere for generations. Now it feeds the siege.", "The sun will rise soon, and the dead do not like daylight.", "Push through the lines before the light reaches the lower field."], "waves": [{"enemies": {"skeleton": 2, "armored knight": 1, "bandit": 2}, "line": "The siege lines are dug in. Start with the knight's shield."}, {"enemies": {"brute": 1, "wraith": 2, "bandit archer": 2, "skeleton": 1}, "line": "Archers on the hill and a brute in the center. Split your attention."}, {"enemies": {"armored knight": 2, "skeleton": 2, "wraith": 1, "bandit archer": 1}, "line": "Two knights at the last tent. Break their guard and keep moving."}], "boss": null, "outro": ["The siege line is broken. The sun comes up over the meadow for the first time in weeks.", "Past the last tent, a red sky waits. The throne is close."], "reward": {"kind": "weapon", "id": "greatsword"}}, {"id": 6, "name": "Throne Under a Red Sky", "biome": "red eclipse wasteland", "objective": "Reach the throne and break the Hollow King's crown.", "intro": ["This is the last of it. The Hollow King sits under a sky gone red.", "The crown is the source of the frost. Break it and the dead lose their shape.", "There is no road back from here. Go up the steps."], "waves": [{"enemies": {"skeleton": 3, "bandit": 2, "wraith": 1}, "line": "The first guard is already moving. Do not wait for them to surround you."}, {"enemies": {"armored knight": 2, "brute": 1, "wraith": 2, "bandit archer": 2}, "line": "The King's honor guard. Take the knights down first."}, {"enemies": {"brute": 1, "skeleton": 3, "armored knight": 2, "wraith": 2}, "line": "The King is on the steps. Everything he has is here."}], "boss": {"name": "The Hollow King", "type": "brute", "taunt": ["You walked into my cold house, mortal.", "Kneel now, and I will make it quick."], "deathLine": "Cold is all that is left of me. Light, then. Let it burn."}, "outro": ["The crown cracks and the frost goes out of the stone like breath from a dying fire.", "The lamplighter stands over the throne and does not look away."], "reward": {"kind": "spell", "id": "gravity push"}}], "ending": ["The Hollow King fell, and the cold went out of the crown like breath from a closed room.", "Hollowmere's lanterns came back on one by one, all the way to the edge of the wood.", "The dead lay still. Some of them looked like neighbors you could have known.", "The lamplighter buried the crown in the meadow where the harvest used to grow.", "Far north, under the red sky, something has begun to hum. The wood still keeps its secrets."], "deathLines": ["The cold takes you. The lamp goes out.", "You are down in the frost. Get up when you can.", "The Hollow King keeps what he takes. Try again."]};
-const REWARD_LINES={
- fireball:'Fire answers you now. Open your empty hand, squeeze the trigger to call it, then throw. Hold the flame against your blade to set it burning.',
- 'round shield':'The knight\'s round shield is yours. It waits here and on the rack in the Lantern Yard. Grip it in your off hand and meet their blows.',
- lightning:'Lightning is yours. Press B or Y to choose it, then hold the trigger and point. It leaps from one enemy to the next.',
- 'slow time':'You can slow the world now. Press X. The gold bar on your wrist shows how long it lasts.',
- greatsword:'A greatsword is yours. Hold it with both hands. It is slow to start and terrible once it moves.',
- 'gravity push':'The crown\'s last power is yours. Choose Gravity Push with B or Y, squeeze, then let go to throw them back.'};
 const WEAPON_ID={'round shield':'shield',greatsword:'greatsword',longsword:'longsword',dagger:'dagger',axe:'axe',mace:'mace',spear:'spear'};
 const ENEMY_ID={'bandit':'bandit','bandit archer':'archer','skeleton':'skeleton','armored knight':'knight','brute':'brute','wraith':'wraith'};
 
 /* ============================== GAME STATE ============================== */
-const state={region:HUB_ID,tier:0,traveling:false,mode:'title',chapter:0,wave:-1,queue:[],spawnCD:0,waveDone:false,timer:0,inHub:true,hitstop:0,deaths:0,menuOpen:false,resetArm:0,complete:false};
-let npc=null,dummy=null;const menu=new Panel(1.5,1.24,1200,992,{interactive:true,order:12});const endPanel=new Panel(1.1,.5,880,400,{interactive:true,order:13});
+const state={region:HUB_ID,tier:0,traveling:false,mode:'title',inHub:true,hitstop:0,deaths:0,menuOpen:false,resetArm:0};
+let npc=null,dummy=null;const menu=new Panel(1.5,1.24,1200,992,{interactive:true,order:12});const endPanel=new Panel(1.4,.9,1120,720,{interactive:true,order:13});
 let dummyPanel=null;
 function dummyHit(dmg,kind,part){if(!dummyPanel)return;dummyPanel.clear();dummyPanel.bg('rgba(14,11,20,.82)','rgba(233,135,74,.5)');dummyPanel.text('TRAINING DUMMY',240,44,26,'#e9874a','Cinzel',800,'center');dummyPanel.text(`${dmg}`,240,118,64,'#efe6d2','Alegreya Sans',700,'center');dummyPanel.text(`${kind} · ${part?part.k.replace(/[LR]$/,''):''}`,240,160,26,'#a89f90','Alegreya Sans',600,'center');dummyPanel.update();}
 function rackSlots(){const out=[];if(!W.rack)return out;W.rack.updateMatrixWorld();for(let i=0;i<6;i++)out.push(new V3(-1.45+i*.58,1.0,.18).applyMatrix4(W.rack.matrixWorld));return out;}
@@ -2824,28 +2821,35 @@ function fillRack(){const slots=rackSlots();const owned=id=>weapons.some(w=>w.ow
 function updateNpc(){}
 
 /* ---------- menus ---------- */
-function drawMenu(){const m=menu;m.clear();m.bg();m.text(STORY.hub.name.toUpperCase(),600,74,44,'#e9874a','Cinzel',800,'center');m.text('The realm. Walk a road out through its gate.',600,116,28,'#a89f90','Alegreya Sans',500,'center');
+function drawMenu(){const m=menu;m.clear();m.bg();const mq=mainCur();m.text(REGION_AT[HUB_ID].name.toUpperCase(),600,74,44,'#e9874a','Cinzel',800,'center');m.text(mq?`Main quest: ${mq.objective}`:'The realm is open. Walk a road out through its gate.',600,116,28,mq?'#ffd27a':'#a89f90','Alegreya Sans',600,'center');
  drawWorldMap(m,76,140,340,140,14);
  const y=630;m.text('Turning',60,y+44,28,'#a89f90','Alegreya Sans',700);m.button('turn-snap','Snap',200,y,150,64,{active:SAVE.turn==='snap',size:26});m.button('turn-smooth','Smooth',360,y,150,64,{active:SAVE.turn==='smooth',size:26});
  m.text('Detail',580,y+44,28,'#a89f90','Alegreya Sans',700);['high','medium','low'].forEach((q,i)=>m.button('q-'+q,q[0].toUpperCase()+q.slice(1),690+i*160,y,150,64,{active:SAVE.quality===q,size:26}));
  m.text(`Spells: ${SAVE.spells.length?SAVE.spells.map(s=>SPELLS[s].name).join(', '):'none yet'}`,60,y+130,26,'#efe6d2','Alegreya Sans',500);m.text(`World: ${(W.tris/1000).toFixed(0)}k triangles`,60,y+170,22,'#6a6276','Alegreya Sans',500);
- m.button('reset',state.resetArm>clock?'Press again to erase progress':'Reset progress',700,y+120,440,64,{size:24});m.text('Point and pull the trigger to choose',600,960,24,'#6a6276','Alegreya Sans',500,'center');m.update();}
+ m.button('reset',state.resetArm>clock?'Press again to erase progress':'Reset progress',700,y+120,440,64,{size:24});m.text(mq?`Act ${mq.act}: ${mainAct(mq)} · ${mq.title}`:'The Cold Crown is broken.',60,880,26,'#e9874a','Cinzel',700);m.text('Point and pull the trigger to choose',600,960,24,'#6a6276','Alegreya Sans',500,'center');m.update();}
 function onMenu(id){sfx('ui',null,.6);
  if(id.startsWith('turn-')){SAVE.turn=id.slice(5);save();}
  if(id.startsWith('q-')){SAVE.quality=id.slice(2);QF=QUALITY[SAVE.quality];save();enterHub(true);return;}
- if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false,main:[],quests:{active:{},done:[]}});PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
- if(id==='next'){startChapter(state.chapter+1);return;}if(id==='hub'){enterHub();return;}if(id==='retry'){startChapter(state.chapter);return;}
+ if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false,main:[],quests:{active:{},done:[]}});mainReset();PROG.reset();for(const k in regionState)regionState[k]={visited:false};save();enterHub(true);return;}state.resetArm=clock+3;}
+ if(id==='hub'){enterHub();return;}
  drawMenu();}
-function showEnd(final){const p=endPanel;p.clear();p.bg();p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[state.chapter-1].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');
- p.button('hub','Return to the Lantern Yard',60,160,760,90,{size:32});if(!final&&state.chapter<6)p.button('next',`Continue: ${STORY.chapters[state.chapter].name}`,60,270,760,90,{size:30});p.update();
- _v1.copy(headFwd).multiplyScalar(1.5).add(headPos);endPanel.mesh.position.set(_v1.x,headPos.y-.62,_v1.z);endPanel.mesh.lookAt(headPos.x,headPos.y-.3,headPos.z);scene.add(endPanel.mesh);endPanel.mesh.visible=true;}
+/* ending card: credits, a few numbers, and the world stays open */
+function showEnd(){const p=endPanel,keep=p.hover;p.clear();p.hover=keep;p.bg();
+ p.text('THE CROWN IS BROKEN',560,92,52,'#e9874a','Cinzel',800,'center');p.text(STORY2.title,560,148,30,'#efe6d2','Cinzel',700,'center');
+ const L=STORY2.ending;p.text(L[L.length-2],560,222,28,'#a89f90','Alegreya Sans',500,'center',1000);p.text(L[L.length-1],560,296,30,'#efe6d2','Alegreya Sans',600,'center',1000);
+ p.text(STORY2.credits,560,380,26,'#e8c04a','Alegreya Sans',600,'center',980);
+ p.text(`Level ${SAVE.prog.level} · ${SAVE.prog.gold} gold · ${SAVE.quests.done.length} side quests · ${state.deaths} falls`,560,486,26,'#a89f90','Alegreya Sans',700,'center');
+ p.button('cont','Continue exploring',200,560,720,100,{size:36});p.update();
+ if(!endPanel.mesh.visible){_v1.copy(headFwd).multiplyScalar(1.6).add(headPos);endPanel.mesh.position.set(_v1.x,headPos.y-.2,_v1.z);endPanel.mesh.lookAt(headPos.x,headPos.y-.1,headPos.z);scene.add(endPanel.mesh);endPanel.mesh.visible=true;}}
+endPanel.redraw=showEnd;
+endPanel.onClick=id=>{if(id!=='cont')return;sfx('ui',null,.6);endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);setMusic(state.inHub?'hub':'explore');};
 
 /* ---------- travel between regions (fade, loading card, rebuild, arrive at the far gate) ---------- */
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const loadPanel=new Panel(1.3,.62,1040,496,{order:1001});loadPanel.mesh.material.depthTest=false;loadPanel.mesh.visible=false;loadPanel.mesh.position.set(0,0,-1.4);camera.add(loadPanel.mesh);
 function drawLoading(R){const p=loadPanel;p.clear();p.bg('rgba(10,8,14,.95)');p.text('THE ROAD LEADS TO',520,74,26,'#a89f90','Alegreya Sans',700,'center');p.text(R.name.toUpperCase(),520,146,54,'#e9874a','Cinzel',800,'center');
  p.text(R.tier?`Danger: tier ${R.tier}`:'Safe',520,206,32,R.tier>=4?'#e0645a':R.tier?'#e8c04a':'#8ad07a','Alegreya Sans',700,'center');
- p.text(pick(R.tips),520,300,32,'#efe6d2','Alegreya Sans',500,'center',900);p.text('Loading…',520,452,24,'#6a6276','Alegreya Sans',500,'center');p.update();}
+ p.text(pick(((STORY2.regions[R.id]||{}).loreTips||[]).concat(R.tips||[])),520,300,32,'#efe6d2','Alegreya Sans',500,'center',900);p.text('Loading…',520,452,24,'#6a6276','Alegreya Sans',500,'center');p.update();}
 function setupHub(){
  player.dead=false;player.hp=player.maxHp;player.mana=player.maxMana;player.slow=false;
  spawnVillagers(HUB_ID);
@@ -2861,62 +2865,90 @@ async function travelTo(id,fromDir,opt={}){
   await fadeTo(1);state.mode='loading';drawLoading(R);loadPanel.mesh.visible=true;const t0=performance.now();await sleep(40);
   clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);bossPanel.mesh.visible=false;
   if(menu.mesh.parent)scene.remove(menu.mesh);if(dummyPanel&&dummyPanel.mesh.parent)scene.remove(dummyPanel.mesh);if(npc){scene.remove(npc.root);npc=null;}dummy=null;
-  state.region=id;state.tier=R.tier;state.inHub=!!R.hub;state.chapter=0;state.wave=-1;state.queue=[];state.pendingWave=null;state.waveDone=false;state.complete=false;
+  state.region=id;state.tier=R.tier;state.inHub=!!R.hub;maxTokens=R.tier>=4?3:2;
   buildWorld(R);giveLoadout();if(R.hub)setupHub();questOnRegion(R);
   const rd=fromDir&&W.roads.find(r=>r.dir===fromDir);
   if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,R.hub?6:7,0);
   player.dead=false;setMusic(R.hub?'hub':'explore');
   if(opt.setup)opt.setup(R);
-  state.arriveDir=fromDir||null;if(!R.hub&&!state.chapter)setupCamps(R);else campRT=[];
+  state.arriveDir=fromDir||null;if(!R.hub)setupCamps(R);else campRT=[];mainOnBuild(R);
   SAVE.region=id;save();
   const wait=1200-(performance.now()-t0);if(wait>0)await sleep(wait);
   loadPanel.mesh.visible=false;state.mode='play';fadeTo(0);
   const rs=regionState[id],first=!rs.visited;rs.visited=true;
   if(opt.arrive)opt.arrive(R,first);else regionArrive(R,first);
  }finally{state.traveling=false;}
- return true;}
+ mainCheck();return true;}
 
 /* ---------- hub ---------- */
 async function enterHub(rebuild){
  return travelTo(HUB_ID,null,{arrive:()=>{
-  if(!SAVE.seenIntro){SAVE.seenIntro=true;save();say(STORY.hub.intro);say(['Grab the sword on your hip with your grip button. Walk to the dummy and swing hard. Speed is what cuts.','The stone board by the fire maps the realm. When you are ready, walk any road out through its gate.']);}
-  else if(state.justReturned){say(pick(STORY.hub.returnLines));}state.justReturned=false;}});}
+  if(!SAVE.seenIntro){SAVE.seenIntro=true;save();mainSay(STORY2.prologue);mainSay(['Grab the sword on your hip with your grip button. Walk to the dummy and swing hard. Speed is what cuts.','The stone board by the fire maps the realm. When you are ready, walk any road out through its gate.'],undefined,1);mainStart(mainCur(),2);}}});}
 
-/* ---------- chapters ---------- */
+/* set dressing per biome for the story regions (REGIONS[].chapter marks them; buildWorld reads it) */
 const CH_DRESS={forest:'forest',swamp:'swamp',snow:'snow',castle:'castle',waste:'waste',meadow:'siege'};
-/* part 1: a chapter runs its waves in the region mapped to it (REGIONS[].chapter) */
-async function startChapter(n){
- const C=STORY.chapters[n-1],R=REGIONS.find(r=>r.chapter===n)||REGION_AT[HUB_ID];
- return travelTo(R.id,null,{setup:()=>{state.chapter=n;maxTokens=n>=4?3:2;player.hp=player.maxHp;player.mana=player.maxMana;player.slow=false;},
-  arrive:()=>{narrQ.length=0;narrCur=null;say(C.intro);state.timer=Math.min(11,C.intro.length*3.6);state.pendingWave=0;}});}
-function startWave(i){const C=STORY.chapters[state.chapter-1];const wv=C.waves[i];state.wave=i;state.waveDone=false;say(wv.line);
- const list=[];for(const[k,v]of Object.entries(wv.enemies)){const id=ENEMY_ID[k]||k;for(let j=0;j<v;j++)list.push({type:id});}
- for(let j=list.length-1;j>0;j--){const r=Math.floor(Math.random()*(j+1));[list[j],list[r]]=[list[r],list[j]];}
- if(i===C.waves.length-1&&C.boss){const bt=ENEMY_ID[C.boss.type]||C.boss.type;const idx=list.findIndex(x=>x.type===bt);if(idx>=0)list.splice(idx,1);list.unshift({type:bt,boss:C.boss.name});setMusic('boss');}else setMusic('combat');
- state.queue=list;state.spawnCD=1.2;}
-function spawnPoint(){for(let t=0;t<30;t++){const a=Math.atan2(headFwd.x,headFwd.z)+rr(-1.6,1.6),d=rr(9,15);const x=headPos.x+Math.sin(a)*d,z=headPos.z+Math.cos(a)*d;if(Math.hypot(x,z)>26)continue;if(colliders.some(c=>Math.hypot(x-c.x,z-c.z)<c.r+.8))continue;if(B.water!==undefined&&groundY(x,z)<B.water-.3)continue;return new V3(x,0,z);}return new V3(rr(-8,8),0,-12);}
 function liveCount(){return enemies.filter(e=>!e.dead&&!e.dummy).length;}
-function updateWaves(dt){
- if(state.inHub||state.mode!=='play'||player.dead)return;const C=STORY.chapters[state.chapter-1];
- if(state.pendingWave!==undefined&&state.pendingWave!==null){state.timer-=dt;if(state.timer<=0){const w=state.pendingWave;state.pendingWave=null;startWave(w);}return;}
- if(state.complete)return;
- const cap=4+Math.floor(state.chapter/2);state.spawnCD-=dt;
- if(state.queue.length&&state.spawnCD<=0&&liveCount()<cap){const q=state.queue.shift();const e=new Enemy(q.type,spawnPoint(),q.boss||null);sfx('spawn',e.pos,.7);state.spawnCD=rr(.6,1.4);
-  if(q.boss){say(STORY.chapters[state.chapter-1].boss.taunt,q.boss);bossPanel.mesh.visible=true;drawBoss(e);}}
- if(!state.queue.length&&liveCount()===0&&state.wave>=0&&!state.waveDone){state.waveDone=true;player.hp=Math.min(player.maxHp,player.hp+30);player.mana=player.maxMana;
-  if(state.wave<C.waves.length-1){state.pendingWave=state.wave+1;state.timer=4;setMusic('explore');}else chapterComplete();}}
-function onEnemyDeath(e){if(!e.dummy){grantKillXP(e);questOnKill(e);}if(e.boss&&state.chapter){const C=STORY.chapters[state.chapter-1];if(C.boss)say(C.boss.deathLine,e.bossName);}}
-function chapterComplete(){const n=state.chapter,C=STORY.chapters[n-1];state.complete=true;setMusic(n===6?'end':'explore');say(C.outro);
- const r=C.reward;if(r.kind==='weapon'){const id=WEAPON_ID[r.id]||r.id;if(!SAVE.weapons.includes(id))SAVE.weapons.push(id);_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);_v1.y+=.3;const w=spawnWeapon(id,_v1);w.vel.set(0,1,0);}
- else{const id=SPELL_ID[r.id]||r.id;if(!SAVE.spells.includes(id))SAVE.spells.push(id);}
- SAVE.done=Math.max(SAVE.done,n);save();say(REWARD_LINES[r.id]||r.line);grantReward({xp:120*n,gold:50*n,skillPoint:1});sfx('reward',null,.8);
- if(n===6){say(STORY.ending,'');}
- setTimeout(()=>{if(state.chapter===n&&!state.inHub)showEnd(n===6);},n===6?26000:9000);state.justReturned=true;}
-async function onPlayerDeath(){player.dead=true;player.slow=false;fade.target=.85;say(pick(STORY.deathLines),'');hands.forEach(h=>{if(h.cast)endCast(h);});
+function onEnemyDeath(e){if(!e.dummy){grantKillXP(e);questOnKill(e);}if(e.mainBoss)mainBossDead(e);}
+async function onPlayerDeath(){player.dead=true;player.slow=false;fade.target=.85;say(pick(STORY2.deathLines),'');hands.forEach(h=>{if(h.cast)endCast(h);});
  await new Promise(r=>setTimeout(r,3200));if(state.inHub){player.dead=false;player.hp=player.maxHp;fadeTo(0);return;}
- state.deaths++;if(!state.chapter){regionRespawn();return;}const w=state.wave;for(const e of [...enemies]){if(!e.dead){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}}for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].dead)enemies.splice(i,1);
- clearProjectiles();teleportRig(0,7,0);player.hp=player.maxHp;player.mana=player.maxMana;player.focus=100;player.dead=false;fadeTo(0);
- if(w>=0){state.pendingWave=w;state.timer=2.5;state.queue=[];}}
+ state.deaths++;regionRespawn();}
+
+/* ============================== MAIN QUEST: STORY2.main runs through the open world ==============================
+   SAVE.main = completed step ids; the current step is the first one not in it. Triggers: enter (arrive in the region), clearRegion (every camp there cleared),
+   boss (a stone ring at the region centre; the boss rises when the player comes within MQ_WAKE m), talk (a dialogue page on that villager, see talkTo).
+   Story lines go through MQ.pend on the game clock: at most MQ_CHUNK lines reach the narrator at once, the next chunk waits for the queue to drain. */
+const MAIN=STORY2.main,MAIN_AT={};for(const m of MAIN)MAIN_AT[m.id]=m;
+const MQ={pend:[],boss:null},MQ_CHUNK=4,MQ_WAKE=26;
+const SPELL_HINT={fire:'Fire answers you now. Open your empty hand, squeeze the trigger to call it, then throw. Hold the flame against your blade to set it burning.',
+ push:'Gravity Push is yours. Choose it with B or Y (R on desktop), squeeze, then let go to throw them back.',
+ lightning:'Lightning is yours. Choose it with B or Y (R on desktop), hold the trigger and point. It leaps from one enemy to the next.',
+ slow:'You can slow the world now. Press X (T on desktop). The gold bar on your wrist shows how long it lasts.'};
+const WREN_LAMP=['I light the lamps now. All of them. Even the high ones Idris said were not for me.','Oil, wick, flint. Idris said the hard part is coming back every night. I come back every night.'];
+function mainCur(){return MAIN.find(m=>!SAVE.main.includes(m.id))||null;}
+function mainDone(id){return SAVE.main.includes(id);}
+function mainFinished(){return mainDone(MAIN[MAIN.length-1].id);}
+function mainSpk(s){return s==null?STORY2.mentor.name:s===''?'':vName(s);}
+function mainLine(){const m=mainCur();return m?m.objective:'';}
+function mainAct(m){return (STORY2.acts.find(a=>a.act===m.act)||{}).name||'';}
+function mainTalkFor(v){const m=mainCur();return m&&m.trigger.type==='talk'&&m.trigger.npc===v.d.id?m:null;}
+function mainSay(lines,spk,delay=0,fn=null){MQ.pend.push({lines:[].concat(lines||[]),spk,t:delay,fn});}
+function mainStart(m,delay=0){if(!m)return;toast(`Main quest: ${m.title}`);VIL.markT=0;mainSay(m.startLines,mainSpk(m.startSpeaker),delay,mainCheck);}
+/* the current step's trigger already satisfied by where the player stands (arrival, step start) */
+function mainCheck(){const m=mainCur();if(!m||state.traveling||state.mode!=='play')return;const T=m.trigger,here=state.region===T.region;
+ if(T.type==='enter'&&here)mainComplete(m);
+ else if(T.type==='clearRegion'&&here){const cs=regionState[T.region].camps;if(cs&&cs.length&&cs.every(c=>c.cleared))mainComplete(m);}
+ else if(T.type==='boss'&&here&&!MQ.boss)mainArena(REGION_AT[T.region],m);}
+function mainComplete(m,silent){if(!m||mainDone(m.id))return false;SAVE.main.push(m.id);SAVE.done=SAVE.main.length;
+ const next=mainCur(),actEnd=!next||next.act!==m.act,r={...m.reward};if(actEnd)r.skillPoint=1;
+ if(!silent)mainSay(m.doneLines,mainSpk(m.doneSpeaker));
+ grantReward(r);save();sfx('reward',null,.8);toast(`Main quest complete: ${m.title}`);VIL.markT=0;if(MQ.boss&&MQ.boss.m===m)MQ.boss=null;
+ const sp=r.spell&&(SPELL_ID[r.spell]||r.spell),extra=[];if(sp&&SPELL_HINT[sp])extra.push(SPELL_HINT[sp]);
+ if(actEnd&&next)extra.push(`That is the end of ${mainAct(m)}. A skill point is yours; ${XR?'hold Y':'press K'} to spend it.`);if(extra.length)mainSay(extra,undefined,.5);
+ if(m.unlocks)mainUnlock(m.unlocks);
+ if(next)mainStart(next,3);else mainEnding();return true;}
+/* thaw the gates of the current region that lead into the unlocked one (the signpost text refreshes on the next visit) */
+function mainUnlock(id){for(const g of W.gates||[])if(g.target===id&&g.sealed){g.sealed=false;for(const c of g.obj.children.slice())if(c.material&&c.material.transparent&&c.material.emissive)g.obj.remove(c);}
+ mainSay([`The ice over the road to ${REGION_AT[id].name} is cracking. The way is open.`],'',.5);}
+function mainEnding(){setMusic('end');mainSay(STORY2.ending,'',4,showEnd);}
+function mainReset(){SAVE.main=[];SAVE.done=0;SAVE.seenIntro=false;MQ.pend.length=0;MQ.boss=null;narrQ.length=0;save();}
+/* test / skip helper: drop queued story lines (callbacks still run) */
+function mainFlush(){for(const p of MQ.pend){p.lines.length=0;p.t=0;}narrQ.length=0;narrCur=null;narr.mesh.visible=false;}
+/* boss steps: a ring of standing stones, two braziers and a pillar of light at the region centre */
+function mainOnBuild(R){MQ.boss=null;const m=mainCur();if(m&&m.trigger.type==='boss'&&m.trigger.region===R.id)mainArena(R,m);}
+function mainArena(R,m){const pos=new V3(0,0,0),rng=seededRng(R.seed*13+5);
+ for(let i=0;i<9;i++){const a=i/9*TAU+.17,x=Math.cos(a)*8.5,z=Math.sin(a)*8.5,st=new THREE.Mesh(G(new THREE.BoxGeometry(.9,3.4,.6),'#5e5c5a',{p:[0,1.5,0],warp:.14}),MAT);
+  st.position.set(x,groundY(x,z),z);st.rotation.set(rr(-.06,.06),a+Math.PI/2,rr(-.08,.08));st.scale.setScalar(.8+rng()*.5);world.add(st);colliders.push({x,z,r:.55});}
+ for(const sx of [-3.2,3.2]){const z=-3.2;addFire(world,sx,z,.7);colliders.push({x:sx,z,r:.6});}
+ const beam=new THREE.Mesh(beamGeo,beamMat);beam.scale.set(4,12,4);beam.position.set(0,groundY(0,0)+19,0);beam.renderOrder=5;world.add(beam);
+ MQ.boss={m,R:R.id,pos,e:null};}
+function mainBossDead(e){const m=MAIN_AT[e.mainBoss];if(!m||mainCur()!==m)return;say(m.trigger.boss.deathLine,e.bossName);mainComplete(m);}
+function updateMain(dt){
+ const b=MQ.boss;if(b&&!b.e&&b.R===state.region&&state.mode==='play'&&!state.traveling&&!player.dead&&Math.hypot(headPos.x-b.pos.x,headPos.z-b.pos.z)<MQ_WAKE){
+  const B2=b.m.trigger.boss,e=new Enemy(B2.type,b.pos.clone(),B2.name);e.mainBoss=b.m.id;b.e=e;bossPanel.mesh.visible=true;drawBoss(e);setMusic('boss');sfx('spawn',e.pos,.9);
+  narrQ.unshift(...[].concat(B2.taunt).map(t=>({t,s:B2.name})));}
+ const p=MQ.pend[0];if(!p||narrQ.length)return;p.t-=dt;if(p.t>0)return;
+ if(p.lines.length){say(p.lines.splice(0,MQ_CHUNK),p.spk);p.t=1.2;return;}
+ if(p.fn&&narrCur)return;MQ.pend.shift();if(p.fn)p.fn();}
 
 /* ============================== CAMPS & PATROLS: regions are populated by tier ============================== */
 /* regionState[id].camps=[{x,z,kind:'camp'|'grave',members:[types],cleared,t,elite?:name}] is generated once per region (seeded), set pieces are rebuilt on every visit.
@@ -2966,9 +2998,9 @@ function spawnCamp(c,rt){rt.es=c.members.map((type,j)=>{const lead=j===0&&c.elit
  sfx('spawn',new V3(c.x,groundY(c.x,c.z),c.z),.8);if(c.elite)say(`${c.elite} holds this camp. Bring them down.`);}
 /* story hook: called once when every member of a camp is dead */
 function onCampCleared(R,c){const cs=regionState[R.id].camps;
- say(c.elite?`${c.elite} is dead. The camp is yours.`:cs.every(k=>k.cleared)?`Every camp in ${R.name} is broken. For now.`:pick(['The camp falls quiet.','That fire burns for no one now.','One camp fewer.']));}
+ say(c.elite?`${c.elite} is dead. The camp is yours.`:cs.every(k=>k.cleared)?`Every camp in ${R.name} is broken. For now.`:pick(['The camp falls quiet.','That fire burns for no one now.','One camp fewer.']));mainCheck();}
 function updateCamps(dt){
- if(state.mode!=='play'||state.inHub||state.chapter||state.traveling||player.dead)return;
+ if(state.mode!=='play'||state.inHub||state.traveling||player.dead)return;
  const R=REGION_AT[state.region],cs=regionState[state.region]?.camps;if(!R||!cs)return;
  cs.forEach((c,i)=>{const rt=campRT[i];if(!rt||c.cleared)return;
   if(!rt.es){if(Math.hypot(headPos.x-c.x,headPos.z-c.z)<CAMP.wake&&liveCount()+c.members.length<=CAMP.cap)spawnCamp(c,rt);return;}
@@ -2983,20 +3015,20 @@ function spawnPatrol(R){if(liveCount()+2>CAMP.cap)return false;
 /* death in an open-world region: wake at the arrival gate, camps reset, lose a tenth of the purse */
 function regionRespawn(){
  for(const e of [...enemies]){if(!e.dead){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}}for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].dead)enemies.splice(i,1);
- clearProjectiles();bossPanel.mesh.visible=false;campRT.forEach(rt=>{if(rt)rt.es=null;});patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);
+ clearProjectiles();bossPanel.mesh.visible=false;campRT.forEach(rt=>{if(rt)rt.es=null;});if(MQ.boss)MQ.boss.e=null;patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);
  const rd=state.arriveDir&&W.roads.find(r=>r.dir===state.arriveDir);if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,7,0);
  const p=SAVE.prog,lost=Math.floor((p.gold||0)*.1);p.gold-=lost;save();
  player.hp=player.maxHp;player.mana=player.maxMana;player.focus=100;player.dead=false;fadeTo(0);
  say(lost?`You wake by the road, ${lost} gold lighter. Whatever you fought has crept back to its fire.`:'You wake by the road. Whatever you fought has crept back to its fire.');}
 /* story hook: default arrival line for travel without opt.arrive */
-function regionArrive(R,first){if(first)say(R.desc);if(R.hub)return;
+function regionArrive(R,first){const T=STORY2.regions[R.id];if(T)say(first?T.enterFirst:[pick(T.enter)]);else if(first)say(R.desc);if(R.hub)return;
  say(`${R.name}. Danger ${R.tier}. Recommended level ${R.tier*4-2}.`);
  if(SAVE.prog.level<R.tier*4-4)say(`This land is beyond you. Level ${R.tier*4-2} recommended.`);}
 
 /* ---------- world map: hub board + M / left-stick-click panel ---------- */
 const BIOME_TINT={meadow:'#7aa04a',forest:'#3e7a3a',swamp:'#4a6a4a',snow:'#bcd8ec',castle:'#8a8a90',waste:'#c0502a'};
 function drawLock(g,x,y){g.strokeStyle='#e8c04a';g.fillStyle='#e8c04a';g.lineWidth=5;g.beginPath();g.arc(x,y,11,Math.PI,0);g.stroke();rrect(g,x-17,y,34,26,4);g.fill();g.fillStyle='#1a120c';g.fillRect(x-2,y+8,4,10);}
-function drawWorldMap(p,x0,y0,tw,th,gap){const g=p.g;
+function drawWorldMap(p,x0,y0,tw,th,gap){const g=p.g,mq=mainCur();
  for(const R of REGIONS){const x=x0+R.col*(tw+gap),y=y0+R.row*(th+gap),rs=regionState[R.id],here=R.id===state.region,sealed=regionSealed(R);
   rrect(g,x,y,tw,th,12);g.fillStyle=here?'rgba(110,70,42,.95)':rs.visited?'rgba(40,32,50,.94)':'rgba(22,18,28,.94)';g.fill();g.lineWidth=here?6:2;g.strokeStyle=here?'#ffb070':'rgba(233,135,74,.55)';g.stroke();
   g.fillStyle=BIOME_TINT[R.biome]||'#888';g.fillRect(x+12,y+14,8,th-28);
@@ -3005,10 +3037,14 @@ function drawWorldMap(p,x0,y0,tw,th,gap){const g=p.g;
   const cs=rs.camps;p.text(sealed?'Sealed':R.hub?'Home':cs?`Camps ${cs.filter(c=>c.cleared).length}/${cs.length}`:'Unexplored',x+34,y+110,24,sealed?'#e8c04a':'#a89f90','Alegreya Sans',600);
   if(here)p.text('You are here',x+tw-16,y+th-14,23,'#ffd070','Alegreya Sans',800,'right');
   else if(rs.visited){g.strokeStyle='#8ad07a';g.lineWidth=5;g.beginPath();g.moveTo(x+tw-42,y+th-30);g.lineTo(x+tw-32,y+th-20);g.lineTo(x+tw-16,y+th-40);g.stroke();}
-  if(sealed)drawLock(g,x+tw-36,y+22);}}
+  if(sealed)drawLock(g,x+tw-36,y+22);
+   if(mq&&mq.region===R.id){rrect(g,x+5,y+5,tw-10,th-10,9);g.setLineDash([12,7]);g.lineWidth=4;g.strokeStyle='#ffd27a';g.stroke();g.setLineDash([]);const mx=x+tw-(sealed?84:36),my=y+30;
+    g.beginPath();g.arc(mx,my,17,0,TAU);g.fillStyle='#ffd27a';g.fill();p.text('!',mx,my+11,30,'#3a2208','Cinzel',900,'center');}}}
 const mapPanel=new Panel(1.3,.78,1200,720,{order:14});mapPanel.mesh.visible=false;let mapT=0;const mapTog={still:false,t:0};
 function drawMapPanel(){const p=mapPanel,R=REGION_AT[state.region],cs=regionState[state.region]?.camps;p.clear();p.bg();
- p.text('THE REALM OF HOLLOWMERE',600,60,38,'#e9874a','Cinzel',800,'center');drawWorldMap(p,76,90,340,140,14);
+ p.text('THE REALM OF HOLLOWMERE',600,60,38,'#e9874a','Cinzel',800,'center');drawWorldMap(p,76,90,340,140,14);const mq=mainCur(),ql=questLine();
+  p.text(mq?`MAIN QUEST · Act ${mq.act}: ${mainAct(mq)} · ${mq.title}`:'MAIN QUEST · The Cold Crown is broken',600,570,24,'#e9874a','Cinzel',800,'center');
+  p.text(mq?mq.objective+(ql?`   ·   ${ql}`:''):ql||'Hollowmere is thawing. The road is yours.',600,602,24,'#ffd27a','Alegreya Sans',700,'center');
  p.text(`${R.name}${cs?` · camps cleared ${cs.filter(c=>c.cleared).length}/${cs.length}`:''} · Level ${SAVE.prog.level} · ${SAVE.prog.gold} gold`,600,630,28,'#efe6d2','Alegreya Sans',600,'center');
  p.text(XR?'Click the left stick while standing still to close':'Press M to close',600,684,22,'#6a6276','Alegreya Sans',500,'center');p.update();}
 function openMap(){const m=mapPanel.mesh;_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);m.position.set(_v1.x,headPos.y-.1,_v1.z);m.lookAt(headPos);drawMapPanel();mapT=1;scene.add(m);m.visible=true;sfx('ui',null,.5);}
@@ -3025,13 +3061,11 @@ function uiInteract(){
  for(const h of hands){h.uiHover=null;if(!XR&&h.i===0)continue;
   let o,d;if(XR){if(h.held||h.tk||h.part){if(!h.tk)h.laser.visible=false;h.dot.visible=false;continue;}o=h.aimO;d=h.aim;}else{o=headPos;d=camera.getWorldDirection(_v6).clone();}
   const hit=panelRay(o,d);
-  if(hit){const id=hit.panel.hit(hit.uv);if(hit.panel.hover!==id){hit.panel.hover=id;if(hit.panel===menu)drawMenu();else if(hit.panel===endPanel)showEndHover();else if(hit.panel.redraw)hit.panel.redraw();}h.uiHover=hit.panel;
+  if(hit){const id=hit.panel.hit(hit.uv);if(hit.panel.hover!==id){hit.panel.hover=id;if(hit.panel===menu)drawMenu();else if(hit.panel.redraw)hit.panel.redraw();}h.uiHover=hit.panel;
    if(XR){h.laser.visible=true;h.laser.scale.set(1,1,o.distanceTo(hit.point));h.dot.visible=true;h.dot.position.copy(hit.point);}
    const click=XR?pressed(h,'trig'):deskClick;if(click&&id){buzz(h,.3,30);if(hit.panel.onClick)hit.panel.onClick(id);else onMenu(id);}}
-  else{if(vilAim(h,o,d,XR?pressed(h,'trig'):deskClick))continue;if(XR&&!h.tk){h.laser.visible=false;}h.dot.visible=false;for(const p of panels)if(p.hover){p.hover=null;if(p===menu)drawMenu();else if(p===endPanel)showEndHover();else if(p.redraw)p.redraw();}}}
+  else{if(vilAim(h,o,d,XR?pressed(h,'trig'):deskClick))continue;if(XR&&!h.tk){h.laser.visible=false;}h.dot.visible=false;for(const p of panels)if(p.hover){p.hover=null;if(p===menu)drawMenu();else if(p.redraw)p.redraw();}}}
  deskClick=false;}
-function showEndHover(){const p=endPanel;const keep=p.hover;showEnd.last=showEnd.last||false;p.clear();p.bg();const final=state.chapter===6;p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[Math.max(0,state.chapter-1)].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');p.hover=keep;
- p.button('hub','Return to the Lantern Yard',60,160,760,90,{size:32});if(!final&&state.chapter<6)p.button('next',`Continue: ${STORY.chapters[state.chapter].name}`,60,270,760,90,{size:30});p.update();}
 
 /* ============================== MAIN LOOP ============================== */
 let lastT=performance.now(),lastDt=1/72,hudT=0,attractA=0;
@@ -3050,7 +3084,7 @@ function frame(){
  for(const e of enemies)if(e.dead&&e.dissolve!==undefined){e.dissolve-=dtw;e.root.position.y-=dtw*.8;e.root.scale.multiplyScalar(1-dtw*.6);if(e.dissolve<=0){e.cleanup();e.dissolve=undefined;e.gone=true;}}
  for(let i=enemies.length-1;i>=0;i--)if(enemies[i].dead&&(enemies[i].gone||enemies[i].dissolve===undefined))enemies.splice(i,1);
  for(const rd of ragdolls)stepRagdoll(rd,dtw);for(const g of gibs)stepGib(g,dtw);
- combat(dt);updateProjectiles(dtw);updateShock(dtw);fx.update(dtw);updateBolts(dt);updateWeather(dt,clock);updateWaves(dt);updateNpc(dt);
+ combat(dt);updateProjectiles(dtw);updateShock(dtw);fx.update(dtw);updateBolts(dt);updateWeather(dt,clock);updateMain(dt);updateNpc(dt);
  if(flames)flames.forEach((f,i)=>{f.scale.setScalar((1+Math.sin(clock*13+i)*.1+Math.sin(clock*7.3)*.06));f.rotation.y+=dt*.6;});if(fireLight.intensity>0)fireLight.intensity=3.5+Math.sin(clock*11)*.5+Math.sin(clock*17)*.3;
  player.invuln=Math.max(0,player.invuln-dt);player.mana=Math.min(player.maxMana,player.mana+(hands.some(h=>h.cast)?PROG.manaRegen*.25:PROG.manaRegen)*dt);if(clock-player.lastHurt>PROG.regenDelay&&!player.dead)player.hp=Math.min(player.maxHp,player.hp+PROG.hpRegen*dt);
  updateProgression(dt);updateCamps(dt);updateMapPanel(dt);
@@ -3063,7 +3097,7 @@ function frame(){
 renderer.setAnimationLoop(frame);
 
 /* ============================== BOOT ============================== */
-document.title=STORY.title;
+document.title=STORY2.title;$('#t-title').textContent=STORY2.title;$('#t-tag').textContent=STORY2.tagline;
 async function startGame(vr){
  audioInit();if(AU.ctx&&AU.ctx.state==='suspended')AU.ctx.resume();
  $('#ui').classList.add('hide');if(!vr){$('#hudD').style.display='block';$('#cross').style.display='block';renderer.domElement.requestPointerLock?.();}
@@ -3081,10 +3115,10 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
  if(navigator.xr){try{const ok=await navigator.xr.isSessionSupported('immersive-vr');const b=$('#b-vr');b.disabled=!ok;b.textContent=ok?'Enter VR':'VR not available here';if(!ok)$('#status').textContent+=' · Open this page in the Meta Quest browser to play in VR';}catch(e){$('#b-vr').textContent='VR not available here';}}
  else{$('#b-vr').textContent='VR not available here';$('#status').textContent+=' · WebXR needs HTTPS and a VR browser';}
 })();
-window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,startChapter,enterHub,startWave,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
+window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,enterHub,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
 Object.assign(window.HM,{PROG,SKILLS,SPELLS,grantKillXP,grantReward,buyWeapon,rollDrop,spellKnown,spellList,openSkillPanel,closeSkillPanel,toggleSkillPanel,skillPanel,explode});
 Object.assign(window.HM,{VIL,VD,VDLG,VBUB,STORY2,SQ_AT,spawnVillagers,updateVillagers,talkTo,vDlgClick,acceptQuest,turnInQuest,qReady,qAvail,questLine,questOnKill,questOnRegion,sharpenHeld,colliders:()=>colliders,teleportRig});
-Object.assign(window.HM,{CAMP,genCamps,setupCamps,updateCamps,spawnPatrol,regionRespawn,regionArrive,onPlayerDeath,toggleMap,mapPanel,menu,drawMenu,bossPanel,liveCount,roadD,REGION_AT,HUB_ID,teleportRig,clockNow:()=>clock,patrol:{get t(){return patrolT;},set t(v){patrolT=v;}}});
+Object.assign(window.HM,{CAMP,genCamps,setupCamps,updateCamps,spawnPatrol,regionRespawn,regionArrive,onPlayerDeath,toggleMap,mapPanel,menu,drawMenu,bossPanel,liveCount,roadD,REGION_AT,HUB_ID,teleportRig,clockNow:()=>clock,MQ,MAIN,mainCur,mainLine,mainComplete,mainReset,mainFlush,mainCheck,regionSealed,endPanel,showEnd,patrol:{get t(){return patrolT;},set t(v){patrolT=v;}}});
 
 </script>
 </body>

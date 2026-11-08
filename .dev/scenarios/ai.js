@@ -1,9 +1,11 @@
 // Enemy AI: tier scaling, attacks land, archer spacing, wraith blink, blade-intercept guard.
-module.exports = async ({ HM, step, log, assert }) => {
-  await HM('HM.startChapter(1)');
+module.exports = async ({ page, HM, step, log, assert }) => {
+  await HM('HM.travelTo("2,2",null)');
+  await page.waitForFunction(() => !window.HM.state.traveling, null, { timeout: 60000 });
+  // No camps or patrols: we spawn our own enemies. Tank the player so death never resets the area.
+  await HM('(HM.regionState["2,2"].camps.forEach(c=>{c.cleared=true;c.t=HM.clockNow();}),HM.patrol.t=1e9,HM.enemies.forEach(e=>{if(!e.dead&&!e.dummy)e.die(null,new HM.V3(),null);}),1)');
   await step(1);
-  // No story waves: we spawn our own enemies. Tank the player so death never resets the area.
-  await HM('(HM.state.pendingWave=null,HM.state.queue=[],HM.player.maxHp=HM.player.hp=5000,1)');
+  await HM('(HM.player.maxHp=HM.player.hp=5000,1)');
   const clear = () => HM('(HM.enemies.forEach(e=>{if(!e.dead){e.die(null,new HM.V3(),null);}}),1)');
   const spawn = (type, dx, dz) => HM(`(()=>{const h=HM.headPos,f=new HM.V3(),e=null;HM.camera.getWorldDirection(f);f.y=0;f.normalize();const r=new HM.V3(-f.z,0,f.x);
     const en=new HM.Enemy('${type}',new HM.V3(h.x+f.x*${dz}+r.x*${dx},0,h.z+f.z*${dz}+r.z*${dx}),null);return HM.enemies.indexOf(en);})()`);
@@ -72,4 +74,6 @@ module.exports = async ({ HM, step, log, assert }) => {
   log(`knight raised guard against ${guards}/6 flung blades (guardP ${await HM('HM._k.guardP.toFixed(2)')})`);
   await clear(); await step(.5);
   await HM('(HM.player.maxHp=HM.player.hp=100,HM.state.tier=undefined,1)');
+  // hand Edgewood back with its camps standing and patrols running
+  await HM('(HM.regionState["2,2"].camps.forEach(c=>{c.cleared=false;c.t=0;}),HM.patrol.t=60,1)');
 };
