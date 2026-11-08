@@ -134,7 +134,7 @@ const dotTex=canvasTex(64,64,(g,w)=>{const r=g.createRadialGradient(32,32,0,32,3
 
 /* ============================== AUDIO ============================== */
 const AU={ctx:null,master:null,sfx:null,mus:null,amb:null,filt:null,noise:null,buf:{},cur:{},musKey:'',combat:0,biome:null,nextNote:0,step:0};
-const AUDIO_FILES=['music_hub','music_explore','music_combat','music_boss','music_end','amb_wind','amb_cave','amb_storm','sfx_clash','sfx_flesh','sfx_blunt','sfx_whoosh','sfx_block','sfx_bow','sfx_fall','sfx_fire','sfx_boom','sfx_zap','sfx_charge'];
+const AUDIO_FILES=['music_hub','music_explore','music_combat','music_boss','music_end','amb_wind','amb_cave','amb_storm','sfx_clash','sfx_flesh','sfx_blunt','sfx_whoosh','sfx_block','sfx_bow','sfx_fall','sfx_fire','sfx_boom','sfx_zap','sfx_charge','sfx_spawn','sfx_spawn_bandit','sfx_spawn_archer','sfx_spawn_skeleton','sfx_spawn_knight','sfx_spawn_brute','sfx_spawn_wraith','sfx_spawn_boss','sfx_cue','sfx_recoil','sfx_guardbreak'];
 function audioInit(){
  if(AU.ctx)return;try{AU.ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return;}
  const c=AU.ctx;AU.master=c.createGain();AU.master.gain.value=.9;
@@ -153,9 +153,14 @@ function panner(pos){const c=AU.ctx;if(!pos)return AU.sfx;const p=c.createPanner
 function env(g,t,a,peak,dec){g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec);}
 function noiseSrc(t,dur,type,freq,q,out,peak,dec,f2){const c=AU.ctx,s=c.createBufferSource();s.buffer=AU.noise;s.playbackRate.value=rr(.8,1.2);const f=c.createBiquadFilter();f.type=type;f.frequency.setValueAtTime(freq,t);if(f2)f.frequency.exponentialRampToValueAtTime(f2,t+dur);f.Q.value=q;const g=c.createGain();env(g,t,.004,peak,dec);s.connect(f).connect(g).connect(out);s.start(t,rr(0,1.5));s.stop(t+dur+.05);}
 function osc(t,type,f0,f1,dur,out,peak,a=.004){const c=AU.ctx,o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);if(f1)o.frequency.exponentialRampToValueAtTime(f1,t+dur);env(g,t,a,peak,dur);o.connect(g).connect(out);o.start(t);o.stop(t+dur+a+.05);}
+/* formant voice: sawtooth through parallel bandpass formants, pitch contour f0>f1>f2 with vibrato (shouts, grunts, roars, wails) */
+function voice(t,f0,f1,f2,dur,out,peak,fm,q=6,type='sawtooth',vib=.03){const c=AU.ctx,o=c.createOscillator(),g=c.createGain(),l=c.createOscillator(),lg=c.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.linearRampToValueAtTime(f1,t+dur*.35);o.frequency.exponentialRampToValueAtTime(f2,t+dur);
+ l.frequency.value=rr(5,7);lg.gain.value=f1*vib;l.connect(lg).connect(o.frequency);env(g,t,dur*.12,peak,dur*.88);g.connect(out);
+ for(const f of fm){const b=c.createBiquadFilter();b.type='bandpass';b.frequency.value=f;b.Q.value=q;o.connect(b).connect(g);}o.start(t);o.stop(t+dur+.1);l.start(t);l.stop(t+dur+.1);}
+function clank(t,b,out,v){[[1,.16],[2.13,.1],[3.71,.07],[5.2,.04]].forEach(([m,a])=>osc(t,'square',b*m,b*m*.985,rr(.18,.3),out,a*v*.5));noiseSrc(t,.06,'bandpass',2600,1.5,out,.35*v,.06);}
 function sfx(name,pos,vol=1,pitch=1){
  const c=AU.ctx;if(!c)return;const t=c.currentTime,out=panner(pos);
- const fileName={clash:'sfx_clash',flesh:'sfx_flesh',blunt:'sfx_blunt',whoosh:'sfx_whoosh',block:'sfx_block',bow:'sfx_bow',fall:'sfx_fall',fire:'sfx_fire',boom:'sfx_boom',zap:'sfx_zap',charge:'sfx_charge'}[name];
+ const fileName={clash:'sfx_clash',flesh:'sfx_flesh',blunt:'sfx_blunt',whoosh:'sfx_whoosh',block:'sfx_block',bow:'sfx_bow',fall:'sfx_fall',fire:'sfx_fire',boom:'sfx_boom',zap:'sfx_zap',charge:'sfx_charge',spawn:'sfx_spawn',sp_bandit:'sfx_spawn_bandit',sp_archer:'sfx_spawn_archer',sp_skeleton:'sfx_spawn_skeleton',sp_knight:'sfx_spawn_knight',sp_brute:'sfx_spawn_brute',sp_wraith:'sfx_spawn_wraith',sp_boss:'sfx_spawn_boss',cue:'sfx_cue',recoil:'sfx_recoil',guardbreak:'sfx_guardbreak'}[name];
  if(fileName&&AU.buf[fileName]){const s=c.createBufferSource(),g=c.createGain();s.buffer=AU.buf[fileName];s.playbackRate.value=pitch*rr(.92,1.08);g.gain.value=vol;s.connect(g).connect(out);s.start(t);return;}
  const v=vol;
  switch(name){
@@ -178,7 +183,24 @@ function sfx(name,pos,vol=1,pitch=1){
   case 'reward':[523,659,784,1047].forEach((f,i)=>osc(t+i*.11,'triangle',f,null,.5,out,.14*v));break;
   case 'hurt':osc(t,'sawtooth',160,60,.3,out,.18*v);noiseSrc(t,.2,'lowpass',600,1,out,.4*v,.18);break;
   case 'thunder':noiseSrc(t,3.5,'lowpass',260,.6,out,1.0*v,3.2,60);osc(t,'sine',45,25,2.5,out,.5*v,.1);break;
-  case 'spawn':noiseSrc(t,.9,'bandpass',300,3,out,.5*v,.8,1200);osc(t,'sine',120,60,.8,out,.3*v,.1);break;
+  case 'spawn':noiseSrc(t,.9,'bandpass',300,3,out,.5*v,.8,1200);osc(t,'sine',120,60,.8,out,.3*v,.1);noiseSrc(t,1.3,'lowpass',220,.8,out,.7*v,1.2,60);osc(t,'sine',52,30,1.1,out,.35*v,.2);for(let i=0;i<5;i++)noiseSrc(t+rr(.05,.8),.05,'highpass',rr(1800,3500),1,out,.12*v,.04);break;
+  /* type-specific spawn voices (played by the Enemy as it rises) */
+  case 'sp_bandit':{const f=rr(150,185)*pitch;voice(t+.3,f,f*1.35,f*.85,.75,out,2.6*v,[750,1200,2500],7);noiseSrc(t+.3,.7,'bandpass',1300,1.5,out,.12*v,.65);voice(t+1.1,f*1.1,f*1.25,f*.8,.35,out,1.6*v,[700,1150],7);break;}
+  case 'sp_archer':{const c=AU.ctx,o=c.createOscillator(),b=c.createBiquadFilter(),g=c.createGain();o.type='sawtooth';o.frequency.setValueAtTime(22,t+.2);o.frequency.exponentialRampToValueAtTime(70,t+.95);b.type='bandpass';b.frequency.value=1500;b.Q.value=4;env(g,t+.2,.15,1.4*v,.75);o.connect(b).connect(g).connect(out);o.start(t+.2);o.stop(t+1.1);
+   osc(t+.25,'triangle',170,240,.8,out,.08*v,.3);osc(t+1,'triangle',260,230,.3,out,.14*v);noiseSrc(t+1,.06,'highpass',3000,1,out,.2*v,.06);break;}
+  case 'sp_skeleton':noiseSrc(t,1.1,'lowpass',500,1,out,.7*v,1,110);osc(t,'sine',70,40,.5,out,.4*v);for(let i=0;i<10;i++){const k=t+.15+i*rr(.05,.09);osc(k,'square',rr(900,1700)*pitch,rr(400,600),.04,out,.08*v);noiseSrc(k,.05,'bandpass',rr(1500,2600),3,out,.3*v,.045);}break;
+  case 'sp_knight':{const b=rr(240,300)*pitch;clank(t+.1,b,out,v);clank(t+.32,b*1.12,out,.8*v);clank(t+.6,b*.94,out,1.1*v);noiseSrc(t+.1,.8,'highpass',5000,1,out,.12*v,.7);osc(t+.6,'sine',90,50,.25,out,.4*v);break;}
+  case 'sp_brute':{const f=rr(62,74)*pitch;voice(t+.15,f,f*1.4,f*.8,1.25,out,4.5*v,[320,520,900],4);noiseSrc(t+.15,1.2,'bandpass',420,1.2,out,.35*v,1.1);osc(t+1.15,'sine',58,26,.6,out,1.0*v);noiseSrc(t+1.15,.45,'lowpass',260,1,out,.9*v,.45);break;}
+  case 'sp_wraith':{const f=rr(470,560)*pitch;voice(t,f,f*1.45,f*.8,1.7,out,1.0*v,[f*1.5,f*3],2,'sine',.05);osc(t+.2,'sine',f*.997*1.5,f*1.1,1.4,out,.06*v,.4);noiseSrc(t,1.6,'bandpass',2200,2,out,.25*v,1.5,600);break;}
+  case 'sp_boss':voice(t,98,104,92,2,out,3*v,[400,800,1200],3);voice(t+.05,147,156,138,1.9,out,1.6*v,[600,1100],3);noiseSrc(t+.3,1.6,'lowpass',900,.8,out,.9*v,1.5,80);osc(t+.3,'sine',48,24,1.6,out,1.0*v);break;
+  /* combat cues */
+  case 'cue':{const f=rr(120,150)*pitch;voice(t,f,f*1.2,f*.7,.2,out,2.4*v,[600,1050],6);noiseSrc(t+.06,.22,'bandpass',300*pitch,2,out,.25*v,.2,1100*pitch);break;}
+  case 'rattle':for(let i=0;i<5;i++){const k=t+i*.035;osc(k,'square',rr(1000,1600),500,.03,out,.07*v);noiseSrc(k,.04,'bandpass',2200,3,out,.25*v,.035);}break;
+  case 'alert':{const f=rr(105,125)*pitch;voice(t,f,f*1.3,f*.9,.42,out,2.6*v,[650,1100],6);break;}
+  case 'recoil':{const b=rr(520,640);[[1,.2],[2.6,.1],[4.3,.05]].forEach(([m,a])=>osc(t,'triangle',b*m,b*m*.8,.4,out,a*v));noiseSrc(t,.12,'lowpass',1200,1,out,.45*v,.12);voice(t+.04,150*pitch,160*pitch,95*pitch,.22,out,1.6*v,[550,950],6);break;}
+  case 'guardbreak':clank(t,210,out,1.3*v);noiseSrc(t,.18,'bandpass',2600,2,out,.6*v,.16,700);osc(t,'sine',95,38,.4,out,.8*v);break;
+  case 'blinkcue':osc(t,'sine',280,900,.8,out,.12*v,.5);osc(t,'sine',420,1350,.8,out,.06*v,.5);noiseSrc(t,.8,'bandpass',800,3,out,.3*v,.75,3200);break;
+  case 'blink':noiseSrc(t,.28,'lowpass',3200,1,out,.6*v,.26,200);osc(t,'sine',420,70,.3,out,.3*v);break;
   case 'slow':osc(t,'sine',400,120,1.2,out,.25*v);noiseSrc(t,1,'lowpass',800,1,out,.3*v,.9,150);break;
  }}
 /* ---- music: procedural modal score with optional file override ---- */
@@ -788,13 +810,14 @@ const fx=(()=>{
 
 /* ============================== ENEMIES ============================== */
 const MAT_CHAR=new THREE.MeshPhongMaterial({vertexColors:true,flatShading:true,shininess:14,specular:0x1a1a1a});
+/* ETYPE.block multiplies the tier guard chance; ETYPE.ai: feint/read (guard-reading) chances, combo = max strikes per chain for the type, comboP, back = backstep chance, retreat = parries before retreating, hyper = hyper-armour seconds, cool = cooldown scale */
 const ETYPE={
- bandit:{hp:80,speed:1.75,scale:1,weapon:['longsword','axe','mace'],block:.4,windup:.78,dmg:13,reach:1.5,poise:18,resist:{cut:1,stab:1,blunt:1},atks:['overhead','sideR','sideL','thrust','diag']},
- archer:{hp:60,speed:1.9,scale:.97,weapon:['dagger'],block:.15,windup:.6,dmg:10,reach:1.05,poise:14,resist:{cut:1,stab:1,blunt:1},atks:['sideR','thrust','sideL'],bow:true},
- skeleton:{hp:70,speed:1.55,scale:1,weapon:['bone'],block:.3,windup:.7,dmg:12,reach:1.45,poise:16,resist:{cut:.85,stab:.5,blunt:1.6},atks:['overhead','sideR','sideL','diag'],brittle:true},
- knight:{hp:150,speed:1.45,scale:1.04,weapon:['longsword'],shield:true,block:.75,windup:.82,dmg:17,reach:1.55,poise:30,resist:{cut:.5,stab:.9,blunt:.85},atks:['overhead','sideR','thrust','diag']},
- brute:{hp:280,speed:1.3,scale:1.3,weapon:['maul'],two:true,block:.08,windup:1.05,dmg:28,reach:2.0,poise:60,resist:{cut:.9,stab:.9,blunt:.8},atks:['overhead','sideR','diag']},
- wraith:{hp:90,speed:2.1,scale:1,weapon:[],block:0,windup:.95,dmg:15,reach:9,poise:20,resist:{cut:1.1,stab:1,blunt:1},caster:true}
+ bandit:{hp:80,speed:1.75,scale:1,weapon:['longsword','axe','mace'],block:1,windup:.78,dmg:13,reach:1.5,poise:18,resist:{cut:1,stab:1,blunt:1},atks:['overhead','sideR','sideL','thrust','diag'],ai:{feint:1.5,read:.4,combo:3,comboP:.7,back:.3,retreat:2,cool:.8}},
+ archer:{hp:60,speed:1.9,scale:.97,weapon:['dagger'],block:.5,windup:.6,dmg:10,reach:1.05,poise:14,resist:{cut:1,stab:1,blunt:1},atks:['sideR','thrust','sideL'],bow:true,ai:{feint:.5,read:.2,combo:2,comboP:.3,back:.3,dodge:1,cool:1}},
+ skeleton:{hp:70,speed:1.55,scale:1,weapon:['bone'],block:.45,windup:.7,dmg:12,reach:1.45,poise:16,resist:{cut:.85,stab:.5,blunt:1.6},atks:['overhead','sideR','sideL','diag'],brittle:true,ai:{feint:0,read:0,combo:2,comboP:.5,back:0,relentless:1,cool:.7}},
+ knight:{hp:150,speed:1.45,scale:1.04,weapon:['longsword'],shield:true,block:1.5,windup:.82,dmg:17,reach:1.55,poise:30,resist:{cut:.5,stab:.9,blunt:.85},atks:['overhead','sideR','thrust','diag'],ai:{feint:0,read:.15,bash:1,combo:2,comboP:.35,back:.15,counter:1,hyper:.3,cool:1.1}},
+ brute:{hp:280,speed:1.3,scale:1.3,weapon:['maul'],two:true,block:.3,windup:1.05,dmg:28,reach:2.0,poise:60,resist:{cut:.9,stab:.9,blunt:.8},atks:['overhead','sideR','diag'],ai:{feint:0,read:0,combo:2,comboP:.3,back:0,hyper:.3,shove:1,cool:1.2}},
+ wraith:{hp:90,speed:2.1,scale:1,weapon:[],block:0,windup:.95,dmg:15,reach:9,poise:20,resist:{cut:1.1,stab:1,blunt:1},caster:true,ai:{dodge:1,cool:1}}
 };
 const ATK={
  overhead:[[[.18,1.86,-.08],[0,.35,-1]],[[.15,1.55,.5],[0,.6,.8]],[[.08,.85,.58],[0,-.75,.65]]],
@@ -805,6 +828,28 @@ const ATK={
 };
 const GUARD=[[.24,1.12,.36],[.15,.85,.45]];
 const enemies=[],ragdolls=[],gibs=[];let attackTokens=0,maxTokens=2;
+/* AI difficulty by tier (index tier-1): react = reaction/re-check delay (s), block = base guard chance, combo = max strikes per chain, feint = feint chance, tele = telegraph scale, tokens = simultaneous attackers, cool = attack cooldown scale */
+const TIER=[
+ {react:.7,block:.2,combo:1,feint:0,tele:1.4,tokens:2,cool:1.4},
+ {react:.55,block:.35,combo:2,feint:.1,tele:1.2,tokens:2,cool:1.2},
+ {react:.45,block:.5,combo:2,feint:.2,tele:1,tokens:3,cool:1},
+ {react:.35,block:.65,combo:3,feint:.3,tele:.9,tokens:4,cool:.85},
+ {react:.25,block:.8,combo:4,feint:.4,tele:.8,tokens:5,cool:.7}];
+const TELE={light:.45,heavy:.8,huge:1.2},HEAVY={overhead:1,diag:1};/* minimum windup before tier scaling; huge = brute/knight heavy */
+/* shared once-per-frame read of the player (blade threat, guard stillness, head velocity) + brute shove applied to the rig */
+const AI={t:-1,blade:null,bladeV:new V3(),bladeSp:0,guardW:null,still:0,headV:new V3(),prevHead:new V3(),push:new V3(),pushT:0,lastAtk:-9,offSide:-1};
+const _a1=new V3(),_a2=new V3(),_a3=new V3();
+const wrapA=a=>{while(a>Math.PI)a-=TAU;while(a<-Math.PI)a+=TAU;return a;};
+function aiScan(){const dt=lastDt,gap=clock-AI.t>.2;AI.t=clock;
+ if(gap){AI.prevHead.copy(headPos);AI.pushT=0;AI.still=0;}
+ AI.headV.subVectors(headPos,AI.prevHead).divideScalar(dt);AI.headV.y=0;if(AI.headV.lengthSq()>64)AI.headV.set(0,0,0);AI.prevHead.copy(headPos);
+ AI.blade=null;AI.bladeSp=0;AI.guardW=null;let moving=false;
+ for(const w of weapons){if(w.owner!=='player')continue;const held=w.state==='held';if(!held&&w.state!=='tk'&&!(w.state==='free'&&!w.rest))continue;const sp=w.speed(dt);
+  if(held){if(!AI.guardW||w.hand===hands[1])AI.guardW=w;if(sp>.8)moving=true;}if(!w.d.shield&&sp>AI.bladeSp){AI.bladeSp=sp;AI.blade=w;}}
+ if(AI.blade)AI.bladeV.subVectors(AI.blade.b,AI.blade.pb).divideScalar(dt);
+ AI.still=AI.guardW&&!moving?AI.still+dt:0;
+ AI.offSide=hands[0].held&&!hands[0].held.d.shield&&!hands[1].held?1:-1;/* -1: player's left is the off-hand side */
+ if(AI.pushT>0){AI.pushT-=dt;rig.position.addScaledVector(AI.push,dt);}}
 const lerpArr=(a,b,t,o)=>o.set(lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t));
 function bodyGeo(type,boss,isKing){
  const T={};const add=(k,g)=>{(T[k]=T[k]||[]).push(g);};
@@ -892,8 +937,11 @@ function buildEnemy(type,boss){
  root.scale.setScalar(s);scene.add(root);return{root,N,s};}
 class Enemy{
  constructor(type,pos,boss){const T=ETYPE[type];this.type=type;this.T=T;this.boss=!!boss;const b=buildEnemy(type,boss);Object.assign(this,b);
-  this.pos=new V3().copy(pos);this.vel=new V3();this.yaw=Math.atan2(-pos.x,-pos.z);this.maxHp=this.hp=T.hp*(boss?(type==='brute'?5.2:4.5):1)*(1+(state.chapter||0)*.06);this.rad=.32*this.s;
-  this.state='spawn';this.t=0;this.cool=rr(.8,2);this.atk=null;this.atkT=0;this.hitDone=false;this.strafe=Math.random()<.5?1:-1;this.walk=0;this.flinch=new V3();this.blockCD=0;this.blockPose=null;this.stagger=0;this.burn=0;this.shock=0;this.dmgShow=0;this.dead=false;this.spawnT=0;this.float=type==='wraith'?1.1:0;this.hasToken=false;this.combo=0;this.bowDraw=0;this.mode='melee';
+  this.pos=new V3().copy(pos);this.vel=new V3();this.yaw=Math.atan2(-pos.x,-pos.z);this.tier=Math.min(5,clamp(state.tier||state.chapter||1,1,5)+(boss?1:0));this.TI=TIER[this.tier-1];this.ai=T.ai;const tk=this.tier-1;
+  this.poise=T.poise*(1+.15*tk);this.dmgK=1+.2*tk;this.tokenCap=this.TI.tokens;this.guardP=clamp(T.block*this.TI.block*(boss?1.2:1),0,.95);this.holdR=T.reach*(boss?1.2:1)+(T.ai.relentless?rr(.15,.3):rr(.35,.7));
+  this.maxHp=this.hp=T.hp*(boss?(type==='brute'?5.2:4.5):1)*(1+.35*tk);this.rad=.32*this.s;
+  this.state='spawn';this.t=0;this.cool=rr(.8,2)*this.TI.cool;this.closeT=0;this.stepT=0;this.stepV=new V3();this.backCD=0;this.backN=0;this.dodgeCD=0;this.dodgeT=-1;this.dodgeDir=new V3();this.counterT=0;this.gbN=0;this.gbT=-9;this.parryN=0;this.recoilT=0;this.retreatQ=false;this.retreatT=0;this.nearT=0;this.feint=false;this.bash=false;this.feintK=0;this.cued=false;this.volley=0;this.volT=0;this.blinkT=rr(6,8);this.voiced=false;this.bp=[[0,0,0],[0,0,0]];this.blockSh=null;
+  this.st={atk:0,guard:0,blocked:0,feint:0,back:0,dodge:0,parried:0,counter:0,blink:0,shove:0,gbreak:0};this.atk=null;this.atkT=0;this.hitDone=false;this.strafe=Math.random()<.5?1:-1;this.walk=0;this.flinch=new V3();this.blockCD=0;this.blockPose=null;this.stagger=0;this.burn=0;this.shock=0;this.dmgShow=0;this.dead=false;this.spawnT=0;this.float=type==='wraith'?1.1:0;this.hasToken=false;this.combo=0;this.bowDraw=0;this.mode='melee';
   this.handW=new V3();this.bladeW=new V3();this.handL=new V3();this.handR=new V3();
   this.parts=[['head',.24,.12,2.0,1],['torso',.58,.17,1,1],['uarmL',.3,.06,.55,-1],['farmL',.36,.055,.45,-1],['uarmR',.3,.06,.55,-1],['farmR',.36,.055,.45,-1],['thighL',.45,.08,.55,-1],['shinL',.45,.065,.5,-1],['thighR',.45,.08,.55,-1],['shinR',.45,.065,.5,-1]]
    .filter(p=>!(type==='wraith'&&/thigh|shin/.test(p[0]))).map(([k,len,r,mult,dir])=>({k,node:this.N[k],len,r:r*this.s*(type==='skeleton'&&k!=='head'?.8:1)*(type==='brute'?1.25:1),mult,dir,a:new V3(),b:new V3(),mid:new V3(),off:false}));
@@ -922,7 +970,7 @@ class Enemy{
   else{N.hips.position.y=.95+Math.sin(clock*2+this.walk*.1)*.06;}
   let twist=0,lean=0;
   if(this.state==='windup'||this.state==='strike'){const k=this.atkKey;twist=k==='sideR'||k==='diag'?.45:k==='sideL'?-.4:0;lean=k==='overhead'?-.15:.08;if(this.state==='strike'){twist*=-1;lean=.22;}}
-  if(this.state==='stagger'){lean=-.25+Math.sin(clock*14)*.05;}
+  if(this.state==='stagger'){lean=-.25+Math.sin(clock*14)*.05-(this.recoilT>0?.2:0);}if(this.state==='shove'||(this.state==='feint'&&this.bash))lean=.3;
   this.flinch.multiplyScalar(Math.max(0,1-dt*6));
   N.torso.rotation.set(lean+this.flinch.x,twist+this.flinch.y,this.flinch.z);N.head.rotation.set(-lean*.5,-twist*.5,0);
   this.root.updateMatrixWorld(true);
@@ -932,10 +980,13 @@ class Enemy{
   else if(this.state==='strike'&&this.atk){const tt=clamp(this.atkT/this.strikeDur,0,1);const A=this.atk;const seg=tt<.5?0:1,lt=smooth(tt<.5?tt*2:(tt-.5)*2);hk=lerpArr(A[seg][0],A[seg+1][0],lt,_v1).toArray();bk=lerpArr(A[seg][1],A[seg+1][1],lt,_v2).toArray();}
   else if(this.state==='recover'&&this.atk){const tt=smooth(clamp(this.atkT/.45,0,1));hk=lerpArr(this.atk[2][0],GUARD[0],tt,_v1).toArray();bk=lerpArr(this.atk[2][1],GUARD[1],tt,_v2).toArray();}
   else if(this.state==='block'&&this.blockPose){hk=this.blockPose[0];bk=this.blockPose[1];}
+  else if(this.state==='feint'&&this.atk){const k=this.feintK*(1-smooth(clamp(this.atkT/.28,0,1)));hk=lerpArr(GUARD[0],this.atk[0][0],k,_v1).toArray();bk=lerpArr(GUARD[1],this.atk[0][1],k,_v2).toArray();}
+  else if(this.state==='shove'){hk=[.12,1.35,.55];bk=[0,1,.25];}
+  else if(this.state==='stagger'&&this.recoilT>0){hk=[.55,1.75,-.12];bk=[.5,.8,-.6];}
   else if(this.state==='stagger'){hk=[.4+Math.sin(clock*9)*.1,1.25,.1];bk=[.8,.6,-.2];}
   else{hk=GUARD[0].slice();bk=GUARD[1].slice();hk[1]+=Math.sin(clock*2+this.walk)*.02;}
   if(this.mode==='bow'){hk=[.05,1.5,.25-this.bowDraw*.3];bk=[0,.1,1];}
-  if(this.type==='wraith'){const c=this.state==='windup'?clamp(this.atkT/this.windDur,0,1):0;hk=[.18,1.35+c*.25,.38];bk=[0,1,0];}
+  if(this.type==='wraith'){const c=this.state==='windup'?clamp(this.atkT/this.windDur,0,1):this.state==='blink'?clamp(this.atkT/.8,0,1)*1.6:0;hk=[.18,1.35+c*.25,.38];bk=[0,1,0];}
   const tgt=this.local(hk,_v3.clone?_v3:_v3);const tW=tgt.clone();const pole=this.local([.5,.5,-.5],_v4).clone();
   this.handR.copy(this.ik('R',tW,pole));this.localDir(bk,this.bladeW);
   if(this.weapon&&this.weapon.state==='enemy'){const w=this.weapon;w.obj.visible=this.mode!=='bow';
@@ -944,9 +995,9 @@ class Enemy{
   /* left arm */
   let lh,pl=this.local([-.5,.5,-.5],_v4).clone();
   if(this.T.two&&this.weapon){lh=_v5.copy(this.handR).addScaledVector(this.bladeW,-.22*this.s).clone();}
-  else if(this.shield){const up=this.state==='windup'||this.state==='strike'||this.state==='stagger';lh=this.local(up?[-.32,1.0,.22]:[-.14,1.22,.42],_v5).clone();}
+  else if(this.shield){const up=this.state==='windup'||this.state==='strike'||this.state==='stagger';lh=this.local(up?[-.32,1.0,.22]:this.state==='feint'&&this.bash?[-.12,1.25,.72]:this.state==='block'&&this.blockSh?this.blockSh:[-.14,1.22,.42],_v5).clone();}
   else if(this.mode==='bow'){lh=this.local([-.05,1.5,.62],_v5).clone();}
-  else if(this.type==='wraith'){const c=this.state==='windup'?clamp(this.atkT/this.windDur,0,1):0;lh=this.local([-.18,1.35+c*.25,.38],_v5).clone();}
+  else if(this.type==='wraith'){const c=this.state==='windup'?clamp(this.atkT/this.windDur,0,1):this.state==='blink'?clamp(this.atkT/.8,0,1)*1.6:0;lh=this.local([-.18,1.35+c*.25,.38],_v5).clone();}
   else lh=this.local([-.28,.95+Math.sin(this.walk+Math.PI)*.04*mv,.08+Math.sin(this.walk)*.12*mv],_v5).clone();
   this.handL.copy(this.ik('L',lh,pl));
   if(this.shield&&this.shield.state==='enemy'){const sh=this.shield;const f=this.localDir([0,0,1],_v5);const up=this.state==='windup'||this.state==='strike'||this.state==='stagger';if(up)f.applyAxisAngle(UP,-.9);_m1.makeBasis(f,UP,_v6.crossVectors(f,UP));sh.obj.quaternion.setFromRotationMatrix(_m1);sh.obj.position.copy(this.handL).addScaledVector(f,-.04);sh.obj.scale.setScalar(this.boss?1.2:1);sh.seg();}
@@ -958,38 +1009,64 @@ class Enemy{
  update(dt){
   if(this.dead)return;this.t+=dt;const T=this.T;
   if(this.dummy){this.dmgShow-=dt;this.flinch.multiplyScalar(Math.max(0,1-dt*4));this.state='idle';this.vel.set(0,0,0);this.pose(dt);return;}
+  if(AI.t!==clock)aiScan();const A=this.ai,TI=this.TI;
   if(this.burn>0){this.burn-=dt;this.hp-=dt*6;if(Math.random()<dt*20)fx.spark(this.parts[1].mid,0xff7a2a,1,1,1.5,-2);if(this.hp<=0)return this.die(null,_v1.set(0,1,0),null);}
   if(this.shock>0){this.shock-=dt;this.flinch.set(rr(-.2,.2),rr(-.2,.2),rr(-.2,.2));}
-  this.blockCD-=dt;this.dmgShow-=dt;
+  this.blockCD-=dt;this.dmgShow-=dt;this.backCD-=dt;this.dodgeCD-=dt;this.stepT-=dt;this.recoilT-=dt;
   const to=_v1.set(headPos.x-this.pos.x,0,headPos.z-this.pos.z),dist=to.length();to.divideScalar(dist||1);
   const wantYaw=Math.atan2(to.x,to.z);let dy=wantYaw-this.yaw;while(dy>Math.PI)dy-=TAU;while(dy<-Math.PI)dy+=TAU;
   const turn=this.state==='strike'?1.5:this.state==='stagger'?.5:6;this.yaw+=clamp(dy,-turn*dt,turn*dt);
   let move=_v2.set(0,0,0),speed=0;const reach=T.reach*(this.boss?1.2:1);
-  if(this.state==='spawn'){this.spawnT+=dt;const k=smooth(clamp(this.spawnT/.9,0,1));this.root.position.y=floorY(this.pos.x,this.pos.z)+this.float-(1-k)*1.9*this.s;if(Math.random()<dt*30)fx.puff(_v3.copy(this.pos).setY(floorY(this.pos.x,this.pos.z)+.1),0x2a2030,1,.6,3,.8);if(this.spawnT>.9)this.state='approach';this.pose(dt);return;}
+  if(this.state==='spawn'){if(!this.voiced){this.voiced=true;sfx('sp_'+this.type,this.pos,this.boss?1.3:.9);if(this.boss)sfx('sp_boss',this.pos,1.2);}
+   this.spawnT+=dt;const k=smooth(clamp(this.spawnT/.9,0,1));this.root.position.y=floorY(this.pos.x,this.pos.z)+this.float-(1-k)*1.9*this.s;if(Math.random()<dt*30)fx.puff(_v3.copy(this.pos).setY(floorY(this.pos.x,this.pos.z)+.1),0x2a2030,1,.6,3,.8);if(this.spawnT>.9)this.state='approach';this.pose(dt);return;}
   if(player.dead){this.state='approach';}
-  const releaseToken=()=>{if(this.hasToken){this.hasToken=false;attackTokens--;}};
+  if(this.hasToken&&dist>6)this.dropToken(true);
+  /* projectile dodge (archer/wraith): notice, wait the reaction time, sidestep 0.6 m */
+  if(A.dodge){if(this.dodgeT>=0){this.dodgeT-=dt;if(this.dodgeT<0&&this.state!=='stagger'&&this.state!=='knock'){this.step(this.dodgeDir.x,this.dodgeDir.z,.6,.2);this.st.dodge++;}}
+   else if(this.dodgeCD<=0&&this.stepT<=0&&this.incoming()<1){this.dodgeCD=.8;if(Math.random()<.35+TI.block*.6){this.dodgeT=clamp(TI.react*.5,.1,.35);this.dodgeDir.set(-_a1.z,0,_a1.x).normalize();if(this.dodgeDir.dot(_a2)<0)this.dodgeDir.negate();}}}
+  if(this.counterT>0){this.counterT-=dt;if(this.counterT<=0&&(this.state==='block'||this.state==='engage')&&dist<reach+.5&&!player.dead){if(!this.hasToken){this.hasToken=true;attackTokens++;}this.startAttack(Math.random()<.5?'thrust':'sideR',true);this.st.counter++;}}
   switch(this.state){
    case 'approach':case 'engage':{
     if(T.caster){const want=7;if(dist>want+2)move.copy(to),speed=T.speed;else if(dist<want-2)move.copy(to).negate(),speed=T.speed;move.addScaledVector(_v3.set(to.z,0,-to.x),this.strafe*.8);speed=speed||1.2;
-     this.cool-=dt;if(dist<3.2&&this.t>1){this.blink();}else if(this.cool<=0&&dist<16){this.state='windup';this.atkT=0;this.windDur=T.windup*(this.boss?.8:1);sfx('charge',this.pos,.5);}
+     this.cool-=dt;this.blinkT-=dt;
+     if(this.volley>0){this.volT-=dt;if(this.volT<=0){this.castOrb();this.volley--;this.volT=1.2;}}
+     else if(this.blinkT<=0||(dist<3.2&&this.blinkT<5)){this.state='blink';this.atkT=0;sfx('blinkcue',this.pos,.8);}
+     else if(this.cool<=0&&dist<16){this.state='windup';this.atkT=0;this.windDur=T.windup*TI.tele*(this.boss?.8:1);sfx('charge',this.pos,.5);}
      if(Math.random()<dt*.3)this.strafe*=-1;break;}
-    if(T.bow&&dist>4.5){this.mode='bow';const want=11;if(dist>want+3)move.copy(to),speed=T.speed;else if(dist<want-3)move.copy(to).negate(),speed=T.speed*.8;this.bowDraw=Math.min(1,this.bowDraw+dt/1.3);if(this.bowDraw>=1&&this.cool<=0){this.shoot();this.bowDraw=0;this.cool=rr(1.8,3);}this.cool-=dt;break;}
+    if(T.bow){if(dist>=3)this.retreatT=Math.max(0,this.retreatT-dt);
+     if(dist<3&&this.retreatT<2.5){this.mode='bow';this.retreatT+=dt;move.copy(to).negate().addScaledVector(_v3.set(to.z,0,-to.x),this.strafe*.5);speed=T.speed;this.bowDraw=Math.max(0,this.bowDraw-dt);break;}
+     if(dist>=3){this.mode='bow';if(dist>9)move.copy(to),speed=T.speed;else if(dist<6)move.copy(to).negate(),speed=T.speed*.85;else{move.set(to.z,0,-to.x).multiplyScalar(this.strafe);speed=.7;if(Math.random()<dt*.3)this.strafe*=-1;}
+      this.bowDraw=Math.min(1,this.bowDraw+dt/1.1);this.cool-=dt;if(this.bowDraw>=1&&this.cool<=0&&clock-AI.lastAtk>.3){this.shoot();AI.lastAtk=clock;this.bowDraw=0;this.cool=rr(2.5,3.5)*TI.cool;}break;}}
     this.mode='melee';
-    if(dist>reach+.25){move.copy(to);speed=dist>6?T.speed*1.6:T.speed;this.state='approach';}
-    else{this.state='engage';if(dist<reach-.45){move.copy(to).negate();speed=T.speed*.7;}move.addScaledVector(_v3.set(to.z,0,-to.x),this.strafe*.7);speed=Math.max(speed,T.speed*.45);if(Math.random()<dt*.4)this.strafe*=-1;
-     this.cool-=dt;if(this.cool<=0&&attackTokens<maxTokens&&!player.dead){this.hasToken=true;attackTokens++;this.startAttack();}}
+    const hold=this.hasToken?reach-.15:this.holdR;
+    if(dist>Math.max(hold,reach)+.6){move.copy(to);speed=dist>6?T.speed*1.6:T.speed;this.state='approach';}
+    else{this.state='engage';
+     if(this.stepT>0)break;
+     /* brute: shove the player back if they hug him for 0.5 s */
+     if(A.shove){if(dist<1.15){const n=this.nearT+dt;if(this.nearT<.2&&n>=.2)sfx('cue',this.pos,.8,.6);this.nearT=n;if(n>.5){this.nearT=0;this.state='shove';this.atkT=0;AI.push.copy(to).multiplyScalar(5);AI.pushT=.3;hurtPlayer(6*this.dmgK,this.pos);sfx('push',this.pos,.7);this.st.shove++;break;}}else this.nearT=Math.max(0,this.nearT-dt*2);}
+     /* backstep when the player rushes in */
+     if(A.back>0&&dist<1.2&&this.backCD<=0&&this.backN<2&&!this.hasToken&&-(AI.headV.x*to.x+AI.headV.z*to.z)>1.5){this.backCD=TI.react+.3;if(Math.random()<A.back){this.backN++;this.step(-to.x,-to.z,rr(.5,.8),.3);this.st.back++;break;}}
+     if(this.hasToken){move.copy(to);speed=T.speed*1.15;this.closeT+=dt;
+      if(dist<reach+.1&&clock-AI.lastAtk>.3)this.startAttack();else if(this.closeT>2.5){this.dropToken(true);this.cool=rr(.3,.8);}}
+     else{const d=this.circle(to,hold,move);speed=Math.min(T.speed,d*1.2+.15);this.cool-=dt;
+      if(this.cool<=0&&attackTokens<TI.tokens&&!player.dead){this.hasToken=true;attackTokens++;this.closeT=0;}}}
     break;}
-   case 'windup':{this.atkT+=dt;if(T.caster){if(this.atkT>=this.windDur){this.castOrb();this.state='engage';this.cool=rr(2.2,3.6)*(this.boss?.6:1);}break;}
+   case 'windup':{this.atkT+=dt;if(T.caster){if(this.atkT>=this.windDur){this.castOrb();this.volley=2;this.volT=1.2;this.state='engage';this.cool=2.4+rr(1.5,3)*TI.cool*(this.boss?.6:1);}break;}
+    if(this.feint&&this.atkT>=this.windDur*.45){this.feint=false;this.state='feint';this.feintK=smooth(clamp(this.atkT/(this.windDur*.7),0,1));this.atkT=0;this.st.feint++;if(this.bash)sfx('armor',this.handL,.8);break;}
+    if(!this.cued&&this.atkT>=this.windDur-.2){this.cued=true;sfx(this.type==='skeleton'?'rattle':'cue',this.handR,.75,this.type==='brute'?.6:this.type==='knight'?.85:this.type==='archer'?1.15:1);}
     if(this.atkT>=this.windDur){this.state='strike';this.atkT=0;this.hitDone=false;sfx('whoosh',this.handR,.7,this.T.two?.6:1);}break;}
-   case 'strike':{this.atkT+=dt;move.copy(to);speed=dist>reach*.7?2.2:0;if(this.atkT>=this.strikeDur){if(this.combo>0&&dist<reach+.4){this.combo--;this.atkKey=pick(T.atks.filter(k=>k!==this.atkKey));this.atk=ATK[this.atkKey];this.state='windup';this.atkT=this.windDur*.45;}else{this.state='recover';this.atkT=0;}}
+   case 'feint':this.atkT+=dt;if(this.bash){move.copy(to);speed=1.2;}if(this.atkT>=.28)this.startAttack(this.openKey(),true);break;
+   case 'strike':{this.atkT+=dt;move.copy(to);speed=dist>reach*.7?2.2:0;if(this.atkT>=this.strikeDur){if(this.combo>0&&dist<reach+.4){this.combo--;this.atkKey=pick(T.atks.filter(k=>k!==this.atkKey));this.atk=ATK[this.atkKey];this.state='windup';this.atkT=Math.max(0,Math.min(this.windDur*.45,this.windDur-.3));this.cued=false;}else{this.state='recover';this.atkT=0;}}
     if(this.isKing&&this.atkKey==='overhead'&&this.atkT>=this.strikeDur*.7&&!this.slammed){this.slammed=true;this.slam();}break;}
-   case 'recover':this.atkT+=dt;if(this.atkT>=.45){this.state='engage';releaseToken();this.cool=rr(1.1,2.6)*(this.boss?.55:1)/(1+(state.chapter||0)*.06);}break;
+   case 'recover':this.atkT+=dt;if(this.atkT>=.45){this.state='engage';this.dropToken(false);this.cool=rr(1.1,2.6)*(this.boss?.55:1)*TI.cool*A.cool;}break;
    case 'block':this.atkT+=dt;if(this.atkT>=.6)this.state='engage';break;
-   case 'stagger':this.atkT+=dt;move.copy(to).negate();speed=.8*(1-this.atkT/this.stagger);releaseToken();if(this.atkT>=this.stagger)this.state='engage',this.cool=rr(.4,1);break;
-   case 'knock':this.atkT+=dt;this.pos.addScaledVector(this.vel,dt);this.vel.multiplyScalar(Math.max(0,1-dt*3));releaseToken();if(this.atkT>1.2)this.state='engage';break;
+   case 'stagger':this.atkT+=dt;if(!A.relentless){move.copy(to).negate();speed=.8*(1-this.atkT/this.stagger);}this.dropToken(true);if(this.atkT>=this.stagger){this.state='engage';this.cool=A.relentless?rr(.2,.5):rr(.4,1);if(this.retreatQ){this.retreatQ=false;this.step(-to.x,-to.z,1.6,.8);this.cool=Math.max(this.cool,1.4);}}break;
+   case 'knock':this.atkT+=dt;this.pos.addScaledVector(this.vel,dt);this.vel.multiplyScalar(Math.max(0,1-dt*3));this.dropToken(true);if(this.atkT>1.2||(A.relentless&&this.atkT>.4&&this.vel.lengthSq()<2.25)){this.state='engage';if(A.relentless)this.cool=Math.min(this.cool,.3);}break;
+   case 'shove':this.atkT+=dt;if(this.atkT>=.45)this.state='engage';break;
+   case 'blink':this.atkT+=dt;if(Math.random()<dt*25)fx.puff(this.parts[1].mid,0x3a2a50,1,.8,3,.6);if(this.atkT>=.8){this.blink();this.state='engage';}break;
   }
-  if(this.state!=='block'&&this.state!=='strike'&&this.state!=='windup'&&this.state!=='stagger'&&this.blockCD<=0&&T.block>0)this.tryBlock();
-  if(this.state!=='knock'){if(move.lengthSq()>0)move.normalize();this.vel.lerp(_v3.copy(move).multiplyScalar(speed),Math.min(1,dt*6));this.pos.addScaledVector(this.vel,dt);}
+  if((this.state==='approach'||this.state==='engage'||this.state==='recover'||this.state==='block')&&this.blockCD<=0&&T.block>0&&this.mode==='melee')this.tryBlock();
+  if(this.state!=='knock'){if(this.stepT>0){this.vel.copy(this.stepV);this.pos.addScaledVector(this.stepV,dt);}else{if(move.lengthSq()>0)move.normalize();this.vel.lerp(_v3.copy(move).multiplyScalar(speed),Math.min(1,dt*6));this.pos.addScaledVector(this.vel,dt);}}
   for(const o of enemies){if(o===this||o.dead)continue;const dx=this.pos.x-o.pos.x,dz=this.pos.z-o.pos.z,d=Math.hypot(dx,dz),m=this.rad+o.rad;if(d<m&&d>1e-4){this.pos.x+=dx/d*(m-d)*.5;this.pos.z+=dz/d*(m-d)*.5;}}
   {const dx=this.pos.x-headPos.x,dz=this.pos.z-headPos.z,d=Math.hypot(dx,dz),m=this.rad+.3;if(d<m&&d>1e-4){this.pos.x+=dx/d*(m-d);this.pos.z+=dz/d*(m-d);}}
   for(const c of colliders){const dx=this.pos.x-c.x,dz=this.pos.z-c.z,d=Math.hypot(dx,dz),m=c.r+this.rad;if(d<m&&d>1e-4){this.pos.x+=dx/d*(m-d);this.pos.z+=dz/d*(m-d);}}
@@ -997,24 +1074,70 @@ class Enemy{
   this.root.position.set(this.pos.x,floorY(this.pos.x,this.pos.z)+this.float,this.pos.z);
   this.pose(dt);
   if(this.state==='strike'&&!this.hitDone&&this.weapon&&this.atkT>this.strikeDur*.2)this.checkHitPlayer();
-  if(this.state==='strike'&&!this.weapon&&!T.caster&&!this.hitDone&&this.atkT>this.strikeDur*.3&&this.handR.distanceTo(headPos)<.5){this.hitDone=true;hurtPlayer(8,this.pos);}
+  if(this.state==='strike'&&!this.weapon&&!T.caster&&!this.hitDone&&this.atkT>this.strikeDur*.3&&this.handR.distanceTo(headPos)<.5){this.hitDone=true;hurtPlayer(8*this.dmgK,this.pos);}
   if(this.dmgShow>0||this.boss){this.bar.visible=!this.boss&&this.dmgShow>0;this.bar.position.copy(this.parts[0].b).y+=.18*this.s;this.bar.lookAt(headPos);this.barFill.scale.x=clamp(this.hp/this.maxHp,0,1);}else this.bar.visible=false;
  }
- startAttack(){const T=this.T;this.atkKey=pick(T.atks);this.atk=ATK[this.atkKey];this.state='windup';this.atkT=0;this.windDur=T.windup*rr(.85,1.15)*(this.boss?.8:1)*(1-Math.min(.25,(state.chapter||0)*.04));this.strikeDur=(T.two?.42:.3)*(this.boss&&this.type==='brute'?1.1:1);this.combo=this.boss?ri(1,2):(Math.random()<.2+(state.chapter||0)*.04?1:0);this.slammed=false;}
- tryBlock(){
-  for(const w of weapons){if(w.state!=='held'&&w.state!=='free'&&w.state!=='tk')continue;if(w.owner!=='player')continue;const sp=w.speed(lastDt);if(sp<2.6)continue;
-   const head=this.parts[0].mid;const d=w.b.distanceTo(head);if(d>1.7*this.s)continue;_v3.subVectors(w.b,w.pb);if(_v3.dot(_v4.subVectors(head,w.b))<=0)continue;
-   this.blockCD=.7;if(Math.random()>this.T.block*(this.boss?1.2:1))return;
-   const lp=_v5.subVectors(w.b,this.root.position).applyAxisAngle(UP,-this.yaw).divideScalar(this.s);const high=lp.y>1.35;const side=lp.x>0?1:-1;
-   this.blockPose=high?[[.15,1.62,.42],[-1,.18,.12]]:[[side*.32+.05,1.25,.42],[side*.15,1,.15]];if(this.shield)this.blockPose=[[.3,1.2,.35],[.2,.9,.3]];
-   this.state='block';this.atkT=0;return;}}
+ step(x,z,d,dur){this.stepV.set(x,0,z).normalize().multiplyScalar(d/dur);this.stepT=dur;}
+ dropToken(pass){if(!this.hasToken)return;this.hasToken=false;attackTokens--;if(pass)this.passToken();}
+ /* token hand-off: nearest ready melee enemy gets to attack within 0.5 s */
+ passToken(){let best=null,bd=36;for(const o of enemies){if(o===this||o.dead||o.dummy||o.hasToken||o.T.caster||o.mode!=='melee'||(o.state!=='engage'&&o.state!=='approach'))continue;const d=(o.pos.x-headPos.x)**2+(o.pos.z-headPos.z)**2;if(d<bd){bd=d;best=o;}}if(best)best.cool=Math.min(best.cool,rr(.15,.5));}
+ /* orbit slot: radius R, inside a ~120deg arc in front of the player, spread from other enemies, drifting to the player's off-hand side */
+ circle(to,R,out){const fa=Math.atan2(headFwd.x,headFwd.z),a=wrapA(Math.atan2(-to.x,-to.z)-fa);let push=0;
+  for(const o of enemies){if(o===this||o.dead||o.dummy||o.state==='spawn')continue;const dx=o.pos.x-headPos.x,dz=o.pos.z-headPos.z;if(dx*dx+dz*dz>25)continue;const da=wrapA(a-wrapA(Math.atan2(dx,dz)-fa));if(Math.abs(da)<.7)push+=(da>=0?1:-1)*(.7-Math.abs(da));}
+  if(a>.95)this.strafe=-1;else if(a<-.95)this.strafe=1;else if(Math.random()<.004)this.strafe*=-1;
+  const ta=clamp(a+push*.9+this.strafe*.3+(-AI.offSide*.35-a)*.15,-1.05,1.05)+fa;
+  out.set(headPos.x+Math.sin(ta)*R-this.pos.x,0,headPos.z+Math.cos(ta)*R-this.pos.z);return out.length();}
+ /* soonest player projectile / thrown weapon on course for this body within 1 s; _a1 = its velocity, _a2 = side it will pass */
+ incoming(){const c=this.parts[1].mid;let best=9;
+  for(const p of projectiles){if(p.owner!=='player'||p.stuck)continue;best=this.tti(p.pos,p.vel,c,best);}
+  for(const w of weapons){if(w.owner!=='player'||w.state!=='free'||w.rest||w.vel.lengthSq()<16)continue;best=this.tti(w.obj.position,w.vel,c,best);}
+  return best;}
+ tti(p,v,c,best){const vv=v.lengthSq();if(vv<4)return best;const rx=c.x-p.x,ry=c.y-p.y,rz=c.z-p.z,t=(rx*v.x+ry*v.y+rz*v.z)/vv;if(t<=0||t>=best)return best;const mx=rx-v.x*t,my=ry-v.y*t,mz=rz-v.z*t;if(mx*mx+my*my+mz*mz>1)return best;_a1.copy(v);_a2.set(mx,0,mz);if(_a2.lengthSq()<1e-4)_a2.set(Math.random()-.5,0,Math.random()-.5);return t;}
+ armored(){return this.ai.hyper>0&&this.state==='strike'&&this.atkT<this.ai.hyper;}
+ /* attack the side the player's still guard leaves open */
+ openKey(){const T=this.T,w=AI.guardW;if(!w)return pick(T.atks);const lp=_a3.subVectors(w.b,this.root.position).applyAxisAngle(UP,-this.yaw).divideScalar(this.s);
+  const k=lp.y>1.4?'thrust':lp.x>0?'sideL':'sideR';return T.atks.includes(k)?k:pick(T.atks);}
+ startAttack(key,fast){const T=this.T,A=this.ai,TI=this.TI;
+  const read=!fast&&!key&&AI.still>.8&&Math.hypot(headPos.x-this.pos.x,headPos.z-this.pos.z)<1.5&&Math.random()<A.read;
+  this.feint=!fast&&A.feint>0&&(read||Math.random()<TI.feint*A.feint);this.bash=!fast&&!!A.bash&&Math.random()<TI.feint;if(this.bash)this.feint=true;
+  this.atkKey=key||(read&&!this.feint?this.openKey():pick(T.atks));this.atk=ATK[this.atkKey];this.state='windup';this.atkT=0;
+  const min=HEAVY[this.atkKey]||T.two?(this.type==='brute'||this.type==='knight'?TELE.huge:TELE.heavy):TELE.light;
+  this.windDur=Math.max(.35,Math.max(fast?0:T.windup*rr(.9,1.1),min)*TI.tele);
+  /* attacker outside the player's view: stretch the windup and call out so they can turn */
+  _a1.set(this.pos.x-headPos.x,0,this.pos.z-headPos.z).normalize();if(_a1.dot(headFwd)<.55){this.windDur=Math.max(this.windDur,.8*Math.max(1,TI.tele));sfx('alert',this.pos,.9,this.type==='brute'?.6:1);}
+  this.strikeDur=(T.two?.42:.3)*(this.boss&&this.type==='brute'?1.1:1);
+  const mc=Math.min(TI.combo,A.combo)-1;this.combo=fast?0:mc>0&&Math.random()<A.comboP?ri(1,mc):0;if(this.boss&&!fast)this.combo=Math.max(this.combo,ri(0,1));
+  this.slammed=false;this.cued=false;this.backN=0;this.closeT=0;AI.lastAtk=clock;this.st.atk++;}
+ /* blade intercept: player blade fast and about to reach head/torso -> guard at the predicted point, biased to the side the swing comes from */
+ tryBlock(){const w=AI.blade;if(!w||AI.bladeSp<2.5)return;const s=this.s,hd=this.parts[0].mid,tr=this.parts[1].mid;
+  const P=_a1.copy(w.b).addScaledVector(AI.bladeV,.15),M=_a2.lerpVectors(w.a,w.b,.5).addScaledVector(AI.bladeV,.15),R=.6*s;
+  if(Math.min(P.distanceTo(hd),P.distanceTo(tr),M.distanceTo(hd),M.distanceTo(tr))>R)return;
+  if(AI.bladeV.dot(_a3.subVectors(tr,w.b))<=0&&w.b.distanceTo(tr)>.35*s)return;
+  this.blockCD=this.TI.react;if(Math.random()>this.guardP)return;
+  P.lerp(w.b,.3).sub(this.root.position).applyAxisAngle(UP,-this.yaw).divideScalar(s);const lv=_a3.copy(AI.bladeV).applyAxisAngle(UP,-this.yaw),side=P.x>0?1:-1;
+  const hk=this.bp[0],bk=this.bp[1];
+  if(Math.abs(lv.y)>Math.hypot(lv.x,lv.z)){bk[0]=-1;bk[1]=.18;bk[2]=.12;hk[0]=clamp(P.x+.4,-.2,.6);hk[1]=clamp(P.y-.05,1.15,1.75);}
+  else{bk[0]=side*.15;bk[1]=1;bk[2]=.15;hk[0]=clamp(P.x,-.45,.55);hk[1]=clamp(P.y-.35,.95,1.45);}
+  hk[2]=.42;this.blockPose=this.bp;
+  if(this.shield){this.blockPose=[[.3,1.2,.35],[.2,.9,.3]];this.blockSh=this.blockSh||[0,0,0];this.blockSh[0]=clamp(P.x,-.4,.3);this.blockSh[1]=clamp(P.y,1.0,1.7);this.blockSh[2]=.45;}
+  this.state='block';this.atkT=0;this.st.guard++;}
+ /* player's weapon met ours while we were not mid-strike */
+ onBlocked(w,sp){this.flinch.x-=.1;
+  if(this.state==='block'||this.state==='engage'||this.state==='approach'){if(clock-this.gbT>4){this.gbT=clock;this.gbN=0;}this.gbN++;this.st.blocked++;
+   if(this.gbN>3&&Math.random()<.25){this.gbN=0;this.state='stagger';this.atkT=0;this.stagger=.8;this.counterT=0;this.dropToken(true);sfx('guardbreak',this.handR,1);fx.spark(this.handR,0xffe0a0,26,5,1.6);this.st.gbreak++;return;}
+   if(this.ai.counter&&this.counterT<=0)this.counterT=.4;}
+  if(w.d.mass*sp>10&&!this.boss&&this.state!=='stagger'&&!this.armored()){this.state='stagger';this.atkT=0;this.stagger=.45;}}
+ /* our strike was blocked/parried: recoil 0.3 s + 0.25 s stagger = riposte window */
+ parried(){this.hitDone=true;this.state='stagger';this.atkT=0;this.stagger=this.boss?.45:.55;this.recoilT=.3;this.combo=0;this.feint=false;this.flinch.x-=.3;this.parryN++;this.st.parried++;this.dropToken(true);sfx('recoil',this.handR,.9,this.type==='brute'?.6:1);
+  if(this.ai.retreat&&this.parryN>=this.ai.retreat){this.parryN=0;this.retreatQ=true;}}
  checkHitPlayer(){
-  const w=this.weapon;const r=headCaps(_v3,_v4)+w.d.r;if(segSeg(w.a,w.b,_v3,_v4)<r*r){this.hitDone=true;hurtPlayer(this.T.dmg*(this.boss?1.5:1)*(1+(state.chapter||0)*.05),this.pos,'head');return;}
-  const r2=torsoCaps(_v3,_v4)+w.d.r;if(segSeg(w.a,w.b,_v3,_v4)<r2*r2){this.hitDone=true;hurtPlayer(this.T.dmg*.8*(this.boss?1.5:1)*(1+(state.chapter||0)*.05),this.pos,'torso');}}
- shoot(){const from=this.handL.clone();const tgt=headPos.clone();tgt.y-=.1;const flight=from.distanceTo(tgt)/22;const v=tgt.sub(from).divideScalar(flight);v.y+=.5*9.8*flight;v.x+=rr(-.4,.4);v.y+=rr(-.3,.3);spawnProj('arrow',from,v,this.T.dmg,this);sfx('bow',from,.7);}
- castOrb(){const from=_v3.lerpVectors(this.handL,this.handR,.5).clone();const v=_v4.subVectors(headPos,from).normalize().multiplyScalar(this.boss?8.5:6.5);spawnProj('orb',from,v.clone(),this.T.dmg*(this.boss?1.4:1),this);sfx('magic',from,.5);if(this.isKing){for(const a of [-.3,.3])spawnProj('orb',from,v.clone().applyAxisAngle(UP,a),this.T.dmg,this);}}
- blink(){fx.puff(this.parts[1].mid,0x3a2a50,14,1.5,4,.8);sfx('magic',this.pos,.4);const a=Math.atan2(this.pos.x-headPos.x,this.pos.z-headPos.z)+rr(-1.4,1.4),d=rr(7,10);this.pos.set(headPos.x+Math.sin(a)*d,0,headPos.z+Math.cos(a)*d);const r=Math.hypot(this.pos.x,this.pos.z);if(r>28)this.pos.multiplyScalar(28/r);this.t=0;this.cool=Math.min(this.cool,1);}
- slam(){const c=_v3.copy(this.weapon.b);fx.puff(c,0x9ad0ff,30,4,3,.8);fx.spark(c,0xbfe6ff,30,6,2);sfx('boom',c,1);hands.forEach(h=>buzz(h,.6,120));shockwaves.push({p:c.clone().setY(floorY(c.x,c.z)),r:.2,max:4.2,dmg:22,hit:false});}
+  const w=this.weapon;const r=headCaps(_v3,_v4)+w.d.r;if(segSeg(w.a,w.b,_v3,_v4)<r*r){this.hitDone=true;hurtPlayer(this.T.dmg*(this.boss?1.5:1)*this.dmgK,this.pos,'head');return;}
+  const r2=torsoCaps(_v3,_v4)+w.d.r;if(segSeg(w.a,w.b,_v3,_v4)<r2*r2){this.hitDone=true;hurtPlayer(this.T.dmg*.8*(this.boss?1.5:1)*this.dmgK,this.pos,'torso');}}
+ shoot(){const from=this.handL.clone();const tgt=headPos.clone();tgt.y-=.1;const flight=from.distanceTo(tgt)/22;const v=tgt.sub(from).divideScalar(flight);v.y+=.5*9.8*flight;v.x+=rr(-.4,.4)*this.TI.tele;v.y+=rr(-.3,.3)*this.TI.tele;spawnProj('arrow',from,v,this.T.dmg*this.dmgK,this);sfx('bow',from,.7);}
+ castOrb(){const from=_v3.lerpVectors(this.handL,this.handR,.5).clone();const v=_v4.subVectors(headPos,from).normalize().multiplyScalar(this.boss?8.5:6.5);spawnProj('orb',from,v.clone(),this.T.dmg*(this.boss?1.4:1)*this.dmgK,this);sfx('magic',from,.5);if(this.isKing){for(const a of [-.3,.3])spawnProj('orb',from,v.clone().applyAxisAngle(UP,a),this.T.dmg*this.dmgK,this);}}
+ /* blink 4-6 m to the player's side (never straight behind) */
+ blink(){fx.puff(this.parts[1].mid,0x3a2a50,14,1.5,4,.8);sfx('blink',this.pos,.7);const a=Math.atan2(headFwd.x,headFwd.z)+(Math.random()<.5?1:-1)*rr(.6,1.4),d=rr(4,6);this.pos.set(headPos.x+Math.sin(a)*d,0,headPos.z+Math.cos(a)*d);const r=Math.hypot(this.pos.x,this.pos.z);if(r>28)this.pos.multiplyScalar(28/r);fx.puff(_a1.copy(this.pos).setY(floorY(this.pos.x,this.pos.z)+1.2),0x3a2a50,14,1.5,4,.8);sfx('blink',this.pos,.7);this.t=0;this.cool=Math.min(this.cool,1);this.blinkT=rr(6,8);this.st.blink++;}
+ slam(){const c=_v3.copy(this.weapon.b);fx.puff(c,0x9ad0ff,30,4,3,.8);fx.spark(c,0xbfe6ff,30,6,2);sfx('boom',c,1);hands.forEach(h=>buzz(h,.6,120));shockwaves.push({p:c.clone().setY(floorY(c.x,c.z)),r:.2,max:4.2,dmg:22*this.dmgK,hit:false});}
  /* ---------------- damage ---------------- */
  damage(dmg,kind,at,vel,part,src){
   if(this.dead||this.state==='spawn')return;
@@ -1022,11 +1145,12 @@ class Enemy{
   dmg=Math.round(dmg);if(dmg<2)return;
   this.hp-=dmg;this.dmgShow=4;if(this.boss)drawBoss(this);
   if(this.dummy){this.hp=this.maxHp;dummyHit(dmg,kind,part);fx.blood(at,_v3.copy(vel).normalize(),8,0xc8b080,2);sfx(kind==='blunt'?'blunt':'flesh',at,clamp(dmg/30,.3,1),1.3);this.flinch.add(_v4.set(rr(-.3,.3),rr(-.3,.3),rr(-.2,.2)).multiplyScalar(Math.min(1,dmg/25)));return;}
-  const dir=_v3.copy(vel).normalize();const local=dir.clone().applyAxisAngle(UP,-this.yaw);this.flinch.add(_v4.set(local.z*.3,-local.x*.3,-local.x*.2).multiplyScalar(Math.min(1,dmg/25)));
+  const dir=_v3.copy(vel).normalize();const local=dir.clone().applyAxisAngle(UP,-this.yaw),armored=this.armored();if(!armored)this.flinch.add(_v4.set(local.z*.3,-local.x*.3,-local.x*.2).multiplyScalar(Math.min(1,dmg/25)));
   const sk=this.type==='skeleton',wr=this.type==='wraith';
   fx.blood(at,dir,Math.min(40,6+dmg*.7),sk?0xd8ccb0:wr?0x5a3a8a:0x8a0a0a,kind==='blunt'?1.5:2.8);
   sfx(sk?'bone':this.type==='knight'&&kind!=='stab'?'armor':kind==='blunt'?'blunt':'flesh',at,clamp(dmg/30,.35,1));
-  if(dmg>=(this.boss?this.T.poise*2.2:this.T.poise)||(kind==='blunt'&&dmg>this.T.poise*.7)){if(this.state==='windup'||this.state==='strike'||!this.boss){this.state='stagger';this.atkT=0;this.stagger=clamp(dmg/40,.35,1.1);}}
+  const poise=this.poise*(this.boss?2.2:1)*(this.ai.hyper&&(this.state==='windup'||this.state==='strike')?2:1);/* hyper-armour: half poise damage mid-swing */
+  if(!armored&&(dmg>=poise||(kind==='blunt'&&dmg>poise*.7))){if(this.state==='windup'||this.state==='strike'||!this.boss){this.state='stagger';this.atkT=0;this.stagger=clamp(dmg/40,.35,1.1);}}
   if(this.hp<=0){this.die(kind,vel,part,at);return;}
   if(kind==='cut'&&part&&(sk||dmg>45)&&/farm|uarm/.test(part.k)&&vel.length()>4.5&&!part.off){this.sever(part,vel);}}
  sever(part,vel){const isR=part.k.endsWith('R');const nodes=[part.node];part.off=true;for(const p of this.parts)if(p.node.parent===part.node||p.node===part.node)p.off=true;
@@ -1035,7 +1159,7 @@ class Enemy{
   if(isR&&this.weapon){this.dropWeapon(vel);}if(!isR&&this.shield){this.shield.state='free';this.shield.vel.copy(vel).multiplyScalar(.2);this.shield.owner='loot';this.shield=null;}}
  dropWeapon(vel){const w=this.weapon;if(!w)return;w.state='free';w.owner='loot';w.enemy=null;w.vel.copy(vel||_v1.set(0,1,0)).multiplyScalar(.3);w.vel.y+=1;w.ang.set(rr(-3,3),rr(-3,3),rr(-3,3));w.rest=false;this.weapon=null;}
  die(kind,vel,part,at){
-  if(this.dead)return;this.dead=true;if(this.hasToken){this.hasToken=false;attackTokens--;}this.bar.visible=false;
+  if(this.dead)return;this.dead=true;this.dropToken(true);this.bar.visible=false;
   if(this.boss){bossPanel.mesh.visible=false;}
   if(this.weapon)this.dropWeapon(vel);if(this.shield){this.shield.state='free';this.shield.owner='loot';this.shield.vel.set(0,1,0);this.shield=null;}if(this.bow){scene.remove(this.bow);this.bow.geometry.dispose();this.bow=null;}
   sfx('fall',this.pos,.7);
@@ -1219,9 +1343,9 @@ function combat(dt){
    if(!clash&&e.shield&&!w.d.shield){const R=shieldDisc(e.shield,_v2,_v3);if(segDisc(w.a,w.b,_v2,_v3,R)){clash=true;isShield=true;}}
    if(!clash)continue;const cd=w.cool.get('clash'+enemies.indexOf(e))||0;if(cd>clock)continue;w.cool.set('clash'+enemies.indexOf(e),clock+.28);
    _v1.lerpVectors(w.a,w.b,.6);
-   if(e.state==='strike'&&!e.hitDone){e.hitDone=true;e.state='stagger';e.atkT=0;e.stagger=e.boss?.55:1.05;sfx('clash',_v1,1);fx.spark(_v1,0xffe0a0,22,4.5,1.4);if(w.hand)buzz(w.hand,1,90);if(w.hand2)buzz(w.hand2,1,90);state.hitstop=.06;w.blockT=.15;if(e.hasToken){e.hasToken=false;attackTokens--;}}
+   if(e.state==='strike'&&!e.hitDone){e.parried();sfx('clash',_v1,1);fx.spark(_v1,0xffe0a0,22,4.5,1.4);if(w.hand)buzz(w.hand,1,90);if(w.hand2)buzz(w.hand2,1,90);state.hitstop=.06;w.blockT=.15;}
    else if(sp>2){sfx(isShield?'block':'clash',_v1,clamp(sp/7,.3,.9));fx.spark(_v1,0xffd080,12,3);w.blockT=.25;if(w.state==='held'){w.recoil.copy(_v2.subVectors(w.b,w.pb)).normalize().multiplyScalar(-.05);if(w.hand)buzz(w.hand,.6,50);}
-    e.flinch.x-=.1;if(w.d.mass*sp>10&&!e.boss&&e.state!=='stagger'){e.state='stagger';e.atkT=0;e.stagger=.45;}}}
+    e.onBlocked(w,sp);}}
   /* body hits */
   if(w.blockT>0||sp<1.4)continue;
   _ma.lerpVectors(w.pa,w.a,.5);_mb.lerpVectors(w.pb,w.b,.5);
