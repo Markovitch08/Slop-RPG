@@ -44,7 +44,9 @@ module.exports = async ({ HM, step, log, assert, shot }) => {
   const before = await HM('HM.weapons.length'), dBefore = await HM('HM.PROG.drops.length'), owned = await HM('HM.SAVE.weapons.length');
   await HM("HM.grantKillXP({type:'brute',boss:'Test',tier:2})");
   assert(await HM('HM.weapons.length') === before + 1 && await HM('HM.PROG.drops.length') === dBefore + 1 && await HM('HM.SAVE.weapons.length') === owned + 1, 'boss kill drops a granted weapon with a beam');
-  await step(1);
+  await step(4);
+  await HM('HM.narrQ.length=0');
+  await step(9);
   await HM('HM.openSkillPanel()');
   await step(0.2);
   assert(await HM('HM.skillPanel.mesh.visible') === true, 'skill panel opens');
