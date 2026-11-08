@@ -688,12 +688,14 @@ function updateNarr(dt){
  const toPanel=_v2.subVectors(narrPos,headPos).setY(0).normalize();if(!narr.mesh.visible||toPanel.dot(headFwd)<.75||narrPos.distanceTo(headPos)>3.5)narrPos.lerp(_v1,narr.mesh.visible?Math.min(1,dt*2.5):1);
  narrPos.y=lerp(narrPos.y,headPos.y-.15,Math.min(1,dt*3));narr.mesh.position.copy(narrPos);narr.mesh.lookAt(headPos.x,narrPos.y,headPos.z);}
 /* wrist HUD */
-const wrist=new Panel(.12,.06,320,160,{order:15});wrist.mesh.material.depthTest=true;
+const wrist=new Panel(.12,.0825,320,220,{order:15});wrist.mesh.material.depthTest=true;
 let wristKey='';
-function drawWrist(){const k=[Math.ceil(player.hp),Math.floor(player.mana),Math.floor(player.focus),hands[0].spell,hands[1].spell,SAVE.spells.length,player.slow].join();if(k===wristKey)return;wristKey=k;
- wrist.clear();wrist.bg('rgba(14,11,20,.9)','rgba(233,135,74,.5)');const bar=(y,v,c,l)=>{const g=wrist.g;g.fillStyle='rgba(255,255,255,.12)';g.fillRect(70,y,230,20);g.fillStyle=c;g.fillRect(70,y,230*clamp(v,0,1),20);wrist.text(l,18,y+18,20,'#a89f90','Alegreya Sans',700);};
- bar(22,player.hp/player.maxHp,'#d6463e','HP');bar(54,player.mana/player.maxMana,'#4a86e8','MP');if(SAVE.spells.includes('slow'))bar(86,player.focus/100,'#e8c04a','TIME');
- const sp=h=>{const l=spellList();return l.length?SPELLS[l[h.spell%l.length]].name:'—';};wrist.text(`L ${sp(hands[0])} · R ${sp(hands[1])}`,18,146,22,'#efe6d2','Alegreya Sans',600);wrist.update();}
+function drawWrist(){const pg=SAVE.prog,cdl=['fire','push','slow'].filter(spellKnown).map(s=>[s,Math.max(0,(PROG.cd[s]||0)-clock)]);const k=[Math.ceil(player.hp),Math.floor(player.mana),Math.floor(player.focus),hands[0].spell,hands[1].spell,spellList().length,player.slow,pg.level,pg.xp,pg.gold,pg.points,cdl.map(c=>c[1].toFixed(1))].join();if(k===wristKey)return;wristKey=k;
+ wrist.clear();wrist.bg('rgba(14,11,20,.9)','rgba(233,135,74,.5)');const bar=(y,v,c,l,bh=20)=>{const g=wrist.g;g.fillStyle='rgba(255,255,255,.12)';g.fillRect(70,y,230,bh);g.fillStyle=c;g.fillRect(70,y,230*clamp(v,0,1),bh);wrist.text(l,18,y+bh-2,20,'#a89f90','Alegreya Sans',700);};
+ bar(16,player.hp/player.maxHp,'#d6463e','HP');bar(42,player.mana/player.maxMana,'#4a86e8','MP');if(spellKnown('slow'))bar(68,player.focus/100,'#e8c04a','TIME');
+ bar(96,pg.level>=PROG.maxLevel?1:pg.xp/PROG.need(pg.level),'#b48aff','Lv'+pg.level,14);wrist.text(`${pg.gold} gold${pg.points?` · ${pg.points} skill pt`:''}`,18,138,22,'#e8c04a','Alegreya Sans',700);
+ const sp=h=>{const l=spellList();return l.length?SPELLS[l[h.spell%l.length]].name:'—';};wrist.text(`L ${sp(hands[0])} · R ${sp(hands[1])}`,18,168,22,'#efe6d2','Alegreya Sans',600);
+ wrist.text(cdl.filter(c=>c[1]>0).map(c=>`${SPELLS[c[0]].name.split(' ')[0]} ${c[1].toFixed(1)}`).join(' · '),18,198,20,'#a89f90','Alegreya Sans',600);wrist.update();}
 function attachWrist(){const h=hands[0];h.grip.add(wrist.mesh);wrist.mesh.position.set(.0,.045,.09);wrist.mesh.rotation.set(-Math.PI/2.4,0,0);if(!XR){wrist.mesh.position.set(0,.06,.02);wrist.mesh.rotation.set(-.6,0,0);}}
 /* boss bar & enemy health bars */
 const bossPanel=new Panel(1.1,.12,880,96,{order:19});bossPanel.mesh.visible=false;scene.add(bossPanel.mesh);
@@ -708,13 +710,14 @@ function fadeTo(v){fade.target=v;return new Promise(r=>setTimeout(r,v?520:50));}
 /* ---------- player damage ---------- */
 function headCaps(out1,out2){out1.copy(headPos);out1.y-=.05;out2.copy(headPos);out2.y-=.05;return .15;}
 function torsoCaps(out1,out2){out1.copy(headPos);out1.y-=.3;out2.copy(headPos);out2.y=Math.max(out2.y-.85,rig.position.y+.6);return .2;}
-function hurtPlayer(dmg,from,kind){if(player.dead||player.invuln>0||state.mode!=='play')return;player.hp-=dmg;player.lastHurt=clock;player.invuln=.35;fade.hurt=Math.min(1,.4+dmg/40);sfx('hurt',null,.8);hands.forEach(h=>buzz(h,.8,90));
+function hurtPlayer(dmg,from,kind){if(player.dead||player.invuln>0||state.mode!=='play')return;dmg=PROG.hurt(dmg);if(dmg<=0)return;player.hp-=dmg;player.lastHurt=clock;player.invuln=.35;fade.hurt=Math.min(1,.4+dmg/40);sfx('hurt',null,.8);hands.forEach(h=>buzz(h,.8,90));
  if(from){_v1.subVectors(headPos,from).setY(0).normalize();rig.position.addScaledVector(_v1,Math.min(.25,dmg/120));}
  if(player.hp<=0){player.hp=0;onPlayerDeath();}}
 
 /* ============================== WEAPONS ============================== */
 const WDEF={
  longsword:{name:'Longsword',mass:1.25,dmg:34,len:1.06,hand:[-.1,.12],edge:[.18,1.04],r:.028,tip:true,kind:'blade'},
+ rusty:{name:'Rusty Sword',mass:1.25,dmg:22,len:1.06,hand:[-.1,.12],edge:[.18,1.04],r:.028,tip:true,kind:'blade'},
  dagger:{name:'Dagger',mass:.42,dmg:24,len:.42,hand:[-.04,.05],edge:[.08,.41],r:.022,tip:true,kind:'blade',throwable:true},
  axe:{name:'Axe',mass:1.6,dmg:42,len:.86,hand:[-.12,.5],edge:[.66,.9],r:.08,tip:false,kind:'blade'},
  mace:{name:'Mace',mass:2.0,dmg:38,len:.86,hand:[-.12,.5],edge:[.64,.88],r:.1,kind:'blunt'},
@@ -732,7 +735,7 @@ function weaponGeo(id){
  const blade=(y0,y1,w,th,c=steel,tipL=.12)=>{a.push(G(new THREE.CylinderGeometry(1,1,y1-y0-tipL,4,6),c,{p:[0,(y0+y1-tipL)/2,0],s:[th,1,w],r:[0,0,0],j:.04}));
   a.push(G(new THREE.ConeGeometry(1,tipL,4),c,{p:[0,y1-tipL/2,0],s:[th,1,w],j:.04}));a.push(G(new THREE.BoxGeometry(th*1.1,(y1-y0-tipL)*.8,w*.18),dark,{p:[0,y0+(y1-y0-tipL)*.45,0]}));};
  switch(id){
-  case 'longsword':case 'bone':{const c=id==='bone'?'#d8ccb0':steel;blade(.13,1.06,.026,.006,c,.14);a.push(G(new THREE.BoxGeometry(.035,.03,.24),id==='bone'?'#a89a80':gold,{p:[0,.12,0]}));for(const s of [-1,1])a.push(G(new THREE.ConeGeometry(.018,.04,5),gold,{p:[0,.12,s*.13],r:[s*Math.PI/2,0,0]}));grip(-.11,.1,.017);a.push(G(new THREE.IcosahedronGeometry(.03,1),gold,{p:[0,-.13,0]}));break;}
+  case 'longsword':case 'bone':case 'rusty':{const c=id==='bone'?'#d8ccb0':id==='rusty'?'#8a6a56':steel;blade(.13,1.06,.026,.006,c,.14);a.push(G(new THREE.BoxGeometry(.035,.03,.24),id==='bone'?'#a89a80':gold,{p:[0,.12,0]}));for(const s of [-1,1])a.push(G(new THREE.ConeGeometry(.018,.04,5),gold,{p:[0,.12,s*.13],r:[s*Math.PI/2,0,0]}));grip(-.11,.1,.017);a.push(G(new THREE.IcosahedronGeometry(.03,1),gold,{p:[0,-.13,0]}));break;}
   case 'dagger':blade(.06,.42,.02,.005,steel,.1);a.push(G(new THREE.BoxGeometry(.03,.022,.1),gold,{p:[0,.05,0]}));grip(-.05,.045,.014);a.push(G(new THREE.IcosahedronGeometry(.02,1),gold,{p:[0,-.065,0]}));break;
   case 'axe':grip(-.14,.62,.02,wood);a.push(G(new THREE.CylinderGeometry(.03,.03,.1,6),dark,{p:[0,.72,0]}));
    {const sh=new THREE.Shape();sh.moveTo(0,-.04);sh.lineTo(-.12,-.09);sh.quadraticCurveTo(-.2,0,-.12,.09);sh.lineTo(0,.04);sh.lineTo(.05,.03);sh.lineTo(.05,-.03);const g=new THREE.ExtrudeGeometry(sh,{depth:.012,bevelEnabled:true,bevelSize:.006,bevelThickness:.006,bevelSegments:1,curveSegments:5});a.push(G(g,steel,{p:[-.006,.78,0],r:[0,Math.PI/2,0]}));}
@@ -813,7 +816,7 @@ function drawFromHolster(h,i){const w=holsterSlots[i];if(!w)return;if(h.held){co
  holsterSlots[i]=null;w.obj.visible=true;w.state='held';w.hand=h;w.hand2=null;w.gripY=(w.d.hand[0]+w.d.hand[1])/2*.3;w.slot=-1;h.held=w;w.fresh=2;sfx('ui',null,.3);}
 function giveLoadout(){for(const w of [...weapons])if(w.owner==='player'&&(w.state==='free'||w.state==='rack'||w.state==='stuck'))w.remove();
  const has=id=>weapons.some(w=>w.owner==='player'&&w.id===id&&(w.state==='holster'||w.state==='held'));
- if(!weapons.some(w=>w.owner==='player'&&(w.state==='holster'||w.state==='held'))){const s=spawnWeapon('longsword');holster(s,1);const d=spawnWeapon('dagger');holster(d,0);}
+ if(!weapons.some(w=>w.owner==='player'&&(w.state==='holster'||w.state==='held'))){const s=spawnWeapon(SAVE.weapons.includes('longsword')?'longsword':'rusty');holster(s,1);const d=spawnWeapon('dagger');holster(d,0);}
  if(!XR&&!hands[1].held){const i=holsterSlots.findIndex(s=>s&&!s.d.shield);if(i>=0)drawFromHolster(hands[1],i);}}
 
 /* ---------- free-body physics ---------- */
@@ -1271,9 +1274,9 @@ function clearEnemies(){for(const e of enemies){if(e.hasToken)attackTokens--;e.c
  for(const w of [...weapons])if(w.owner!=='player'||w.state==='free'||w.state==='stuck'||w.state==='rack')if(w.state!=='held'&&w.state!=='holster')w.remove();shockwaves.length=0;}
 
 /* ============================== MAGIC, PROJECTILES, COMBAT ============================== */
-const SPELLS={fire:{name:'Fireball',cost:20,color:0xff6a1a},lightning:{name:'Lightning',cost:6,color:0x8ac8ff},push:{name:'Gravity Push',cost:26,color:0xb08aff},slow:{name:'Slow Time'}};
+const SPELLS={fire:{name:'Fireball',cost:25,cd:1.5,color:0xff6a1a},lightning:{name:'Lightning',cost:18,color:0x8ac8ff},push:{name:'Gravity Push',cost:40,cd:4,color:0xb08aff},slow:{name:'Slow Time',cd:20}};
 const SPELL_ID={'fireball':'fire','lightning':'lightning','gravity push':'push','slow time':'slow'};
-function spellList(){return SAVE.spells.filter(s=>s!=='slow');}
+function spellList(){return ['fire','lightning','push'].filter(spellKnown);}
 function cycleSpell(h){const l=spellList();if(!l.length)return;h.spell=(h.spell+1)%l.length;h.spellShowT=1.4;sfx('ui',h.pos,.4);drawWrist();showSpellIcon(h);}
 const orbGeo=new THREE.IcosahedronGeometry(1,1);
 function mkOrb(color){const g=new THREE.Group();const a=new THREE.Mesh(orbGeo,new THREE.MeshBasicMaterial({color,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false}));const b=new THREE.Mesh(orbGeo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.9,toneMapped:false}));b.scale.setScalar(.45);g.add(a,b);g.userData.a=a;return g;}
@@ -1292,18 +1295,18 @@ function handMagic(h,dt){
  const other=hands[1-h.i];
  if(h.spellShowT>0){h.spellShowT-=dt;h.icon.mesh.position.copy(h.pos).y+=.12;h.icon.mesh.lookAt(headPos);if(h.spellShowT<=0)h.icon.mesh.visible=false;}
  if(h.held||h.part||h.tk||h.uiHover){if(h.cast)endCast(h);return;}
- if(pressed(h,'b')&&XR)cycleSpell(h);
+ if(XR&&(h.i?pressed(h,'b'):released(h,'b')&&!PROG.yHeld))cycleSpell(h);
  const l=spellList();if(!l.length){if(pressed(h,'trig')&&state.mode==='play'&&!state.inHubMenu)sfx('ui',h.pos,.2,.5);return;}
  const sp=l[h.spell%l.length];const palm=_v1.copy(h.aimO).addScaledVector(h.aim,.09);
- if(pressed(h,'trig')){if(player.mana<(sp==='lightning'?3:SPELLS[sp].cost)){sfx('ui',h.pos,.3,.4);buzz(h,.2,60);}else{h.cast=sp;h.castT=0;h.imbueT=0;h.orb.visible=true;h.orb.userData.a.material.color.set(SPELLS[sp].color);sfx('charge',palm,.5);}}
+ if(pressed(h,'trig')){if(player.mana<(sp==='lightning'?6:PROG.cost(sp))||clock<(PROG.cd[sp]||0)){sfx('ui',h.pos,.3,.4);buzz(h,.2,60);}else{h.cast=sp;h.castT=0;h.imbueT=0;h.orb.visible=true;h.orb.userData.a.material.color.set(SPELLS[sp].color);sfx('charge',palm,.5);}}
  if(!h.cast)return;
  if(h.b.trig){h.castT+=dt;const ch=clamp(h.castT/(h.cast==='push'?.45:.6),0,1);h.orb.position.copy(palm);h.orb.scale.setScalar((.025+.04*ch)*(1+.12*Math.sin(clock*30)));h.orb.rotation.y+=dt*6;if(Math.random()<dt*20)fx.spark(palm,SPELLS[h.cast].color,1,.6,.8,0);buzz(h,.05+.15*ch,16);
-  const w=other.held;if(w&&!w.d.shield&&(h.cast==='fire'||h.cast==='lightning')){if(Math.sqrt(pointSeg(palm,w.a,w.b))<.12){h.imbueT+=dt;if(h.imbueT>.35){setImbue(w,h.cast==='fire'?'fire':'lightning');player.mana=Math.max(0,player.mana-14);buzz(other,.6,120);endCast(h);return;}}else h.imbueT=0;}
-  if(h.cast==='lightning'){player.mana-=22*dt;if(player.mana<=0){player.mana=0;endCast(h);return;}zap(h,palm,dt);}}
+  const w=other.held;if(w&&!w.d.shield&&(h.cast==='fire'||h.cast==='lightning')){if(Math.sqrt(pointSeg(palm,w.a,w.b))<.12){h.imbueT+=dt;if(h.imbueT>.35){setImbue(w,h.cast==='fire'?'fire':'lightning');player.mana=Math.max(0,player.mana-14*PROG.costMul());buzz(other,.6,120);endCast(h);return;}}else h.imbueT=0;}
+  if(h.cast==='lightning'){player.mana-=PROG.cost('lightning')*dt;if(player.mana<=0){player.mana=0;endCast(h);return;}zap(h,palm,dt);}}
  else if(released(h,'trig')||!h.b.trig){const ch=clamp(h.castT/.6,0,1);
-  if(h.cast==='fire'&&h.castT>.12){player.mana-=SPELLS.fire.cost;const v=h.vel.length()>2.2&&XR?_v2.copy(h.vel).normalize():_v2.copy(h.aim);const speed=XR?Math.max(10,h.vel.length()*2.4):14;const t=aimAssist(palm,v,.06);if(t)v.lerp(_v3.subVectors(t,palm).normalize(),.6).normalize();if(!XR){const t2=aimAssist(palm,headFwd,.04);if(t2)v.copy(_v3.subVectors(t2,palm).normalize());}
+  if(h.cast==='fire'&&h.castT>.12){player.mana=Math.max(0,player.mana-PROG.cost('fire'));PROG.cd.fire=clock+SPELLS.fire.cd;const v=h.vel.length()>2.2&&XR?_v2.copy(h.vel).normalize():_v2.copy(h.aim);const speed=XR?Math.max(10,h.vel.length()*2.4):14;const t=aimAssist(palm,v,.06);if(t)v.lerp(_v3.subVectors(t,palm).normalize(),.6).normalize();if(!XR){const t2=aimAssist(palm,headFwd,.04);if(t2)v.copy(_v3.subVectors(t2,palm).normalize());}
    spawnProj('fire',palm,v.multiplyScalar(speed),20+32*ch,'player',ch);sfx('fire',palm,.8);buzz(h,.5,60);}
-  if(h.cast==='push'&&h.castT>.08){player.mana-=SPELLS.push.cost;gravityPush(palm,XR?h.aim:headFwd,.5+.5*clamp(h.castT/.45,0,1));buzz(h,.9,140);}
+  if(h.cast==='push'&&h.castT>.08){player.mana=Math.max(0,player.mana-PROG.cost('push'));PROG.cd.push=clock+SPELLS.push.cd;gravityPush(palm,XR?h.aim:headFwd,.5+.5*clamp(h.castT/.45,0,1));buzz(h,.9,140);}
   endCast(h);}}
 function endCast(h){h.cast=null;h.orb.visible=false;}
 function zap(h,palm,dt){
@@ -1311,22 +1314,22 @@ function zap(h,palm,dt){
  for(const e of enemies){if(e.dead||e.state==='spawn')continue;const t=e.parts[1].mid;const d=_v2.subVectors(t,palm);const dist=d.length();if(dist>14)continue;const a=Math.acos(clamp(d.normalize().dot(dir),-1,1));if(a<ba){ba=a;best=e;}}
  if(!best){_v3.copy(palm).addScaledVector(dir,3.5).add(_v4.set(rr(-.3,.3),rr(-.3,.3),rr(-.3,.3)));drawBolt(palm,_v3.clone());if(Math.random()<dt*10)sfx('zap',palm,.25);return;}
  const chain=[best];for(let k=0;k<2;k++){const last=chain[chain.length-1];let nb=null,nd=4.5;for(const e of enemies){if(e.dead||chain.includes(e))continue;const d=e.parts[1].mid.distanceTo(last.parts[1].mid);if(d<nd){nd=d;nb=e;}}if(nb)chain.push(nb);else break;}
- let from=palm.clone();for(const e of chain){const to=e.parts[1].mid.clone().add(_v4.set(rr(-.1,.1),rr(-.2,.2),rr(-.1,.1)));drawBolt(from,to);
-  if(Math.random()<dt*14){e.damage(rr(8,13),'blunt',to,_v5.subVectors(to,from).normalize(),e.parts[1]);e.shock=.4;if(e.state==='windup'&&Math.random()<.5){e.state='stagger';e.atkT=0;e.stagger=.5;}fx.spark(to,0xbfe6ff,6,3,1);}from=to;}
+ let from=palm.clone(),ci=0;for(const e of chain){const to=e.parts[1].mid.clone().add(_v4.set(rr(-.1,.1),rr(-.2,.2),rr(-.1,.1)));drawBolt(from,to);
+  if(Math.random()<dt*5){e.damage(rr(7,11)*PROG.spellMul()*(ci?.5:1),'blunt',to,_v5.subVectors(to,from).normalize(),e.parts[1]);e.shock=.4;if(e.state==='windup'&&Math.random()<.5){e.state='stagger';e.atkT=0;e.stagger=.5;}fx.spark(to,0xbfe6ff,6,3,1);}from=to;ci++;}
  if(Math.random()<dt*12)sfx('zap',palm,.45);}
 function gravityPush(palm,dir,power){
  sfx('push',palm,1);pushMesh.visible=true;pushT=.45;pushMesh.position.copy(palm);pushMesh.lookAt(_v1.copy(palm).add(dir));
  for(const e of enemies){if(e.dead||e.state==='spawn')continue;const d=_v2.subVectors(e.parts[1].mid,palm);const dist=d.length();if(dist>9)continue;d.normalize();if(d.dot(dir)<.55)continue;
   const f=(1-dist/10)*power;const hv=_v3.copy(d).setY(0).normalize().multiplyScalar(8*f);
-  if(e.hp<40*power&&!e.boss){e.vel.copy(hv);e.die('blunt',_v4.copy(hv).add(_v5.set(0,4*f,0)),e.parts[1],e.parts[1].mid);continue;}
-  e.damage(12*power,'blunt',e.parts[1].mid,d,e.parts[1]);if(!e.dead&&!e.boss){e.state='knock';e.atkT=0;e.vel.copy(hv);}else if(e.boss){e.pos.addScaledVector(hv,.08);}}
+  const pd=10*power*PROG.spellMul();if(e.hp<=pd*(e.T.resist.blunt||1)&&!e.boss){e.vel.copy(hv);e.die('blunt',_v4.copy(hv).add(_v5.set(0,4*f,0)),e.parts[1],e.parts[1].mid);continue;}
+  e.damage(pd,'blunt',e.parts[1].mid,d,e.parts[1]);if(!e.dead&&!e.boss){e.state='knock';e.atkT=0;e.vel.copy(hv);}else if(e.boss){e.pos.addScaledVector(hv,.08);}}
  for(const rd of ragdolls){const d=_v2.subVectors(rd.P[2].p,palm);const dist=d.length();if(dist>9||d.normalize().dot(dir)<.5)continue;const f=(1-dist/10)*power*.16;for(const q of rd.P)q.o.addScaledVector(d,-f).y-=f*.5;}
  for(const w of weapons){if(w.state!=='free'&&w.state!=='stuck')continue;const d=_v2.subVectors(w.obj.position,palm);const dist=d.length();if(dist>9||d.normalize().dot(dir)<.5)continue;w.detach();w.state='free';w.rest=false;w.vel.addScaledVector(d,10*(1-dist/10)*power).y+=2;}}
-function toggleSlow(){if(!SAVE.spells.includes('slow'))return;if(player.slow){player.slow=false;}else if(player.focus>15){player.slow=true;sfx('slow',null,.8);}}
+function toggleSlow(){if(!spellKnown('slow'))return;if(player.slow){player.slow=false;PROG.cd.slow=clock+SPELLS.slow.cd;}else if(player.focus>15&&clock>=PROG.cd.slow){player.slow=true;sfx('slow',null,.8);}else sfx('ui',null,.3,.4);}
 function updateSlow(dt){
  if(XR&&pressed(hands[0],'a'))toggleSlow();
- if(player.slow){player.focus-=14*dt;if(player.focus<=0){player.focus=0;player.slow=false;}}else player.focus=Math.min(100,player.focus+6*dt);
- const target=player.slow?.28:1;tScale=lerp(tScale,target,Math.min(1,dt*6));if(state.hitstop>0){state.hitstop-=dt;tScale=Math.min(tScale,.15);}
+ if(player.slow){player.focus-=100/PROG.slowDur()*dt;if(player.focus<=0){player.focus=0;player.slow=false;PROG.cd.slow=clock+SPELLS.slow.cd;}}else player.focus=Math.min(100,player.focus+5*dt);
+ const target=player.slow?.35:1;tScale=lerp(tScale,target,Math.min(1,dt*6));if(state.hitstop>0){state.hitstop-=dt;tScale=Math.min(tScale,.15);}
  if(AU.filt)AU.filt.frequency.setTargetAtTime(player.slow?900:20000,AU.ctx.currentTime,.15);}
 
 /* ---------- telekinesis ---------- */
@@ -1355,7 +1358,7 @@ function spawnProj(kind,pos,vel,dmg,owner,power=1){let m;
  m.position.copy(pos);scene.add(m);projectiles.push({kind,m,pos:m.position,prev:pos.clone(),vel:vel.clone(),dmg,owner,life:kind==='arrow'?6:4,power,stuck:false});}
 function explode(pos,power){
  fx.spark(pos,0xff8a2a,40,6,2);fx.spark(pos,0xffd060,20,4,2.5);fx.puff(pos,0x3a2a20,16,1.5,5,1.2);sfx('boom',pos,.9);hands.forEach(h=>buzz(h,.4,80));
- const R=2.2+power;for(const e of enemies){if(e.dead||e.state==='spawn')continue;const c=e.parts[1].mid;const d=c.distanceTo(pos);if(d>R)continue;const f=1-d/R;const dir=_v1.subVectors(c,pos).normalize();const dmg=(18+38*power)*f;
+ const R=1+.5*power;for(const e of enemies){if(e.dead||e.state==='spawn')continue;const c=e.parts[1].mid;const d=c.distanceTo(pos);if(d>R)continue;const f=1-d/R;const dir=_v1.subVectors(c,pos).normalize();const dmg=(25+35*power)*(.5+.5*f)*PROG.spellMul();
   if(e.hp-dmg*(e.T.resist.blunt||1)<=0){e.vel.copy(dir).multiplyScalar(6*f);e.die('blunt',_v2.copy(dir).multiplyScalar(9*f).add(_v3.set(0,5*f,0)),e.parts[1],pos);continue;}e.damage(dmg,'blunt',c,dir,e.parts[1]);e.burn=3;}
  for(const rd of ragdolls){const d=rd.P[2].p.distanceTo(pos);if(d>R)continue;const f=(1-d/R)*.15;for(const q of rd.P){_v1.subVectors(q.p,pos).normalize();q.o.addScaledVector(_v1,-f).y-=f;}}
  const pd=headPos.distanceTo(pos);if(pd<1.4)hurtPlayer(8,pos);}
@@ -1395,7 +1398,7 @@ function combat(dt){
    if(!clash&&e.shield&&!w.d.shield){const R=shieldDisc(e.shield,_v2,_v3);if(segDisc(w.a,w.b,_v2,_v3,R)){clash=true;isShield=true;}}
    if(!clash)continue;const cd=w.cool.get('clash'+enemies.indexOf(e))||0;if(cd>clock)continue;w.cool.set('clash'+enemies.indexOf(e),clock+.28);
    _v1.lerpVectors(w.a,w.b,.6);
-   if(e.state==='strike'&&!e.hitDone){e.parried();sfx('clash',_v1,1);fx.spark(_v1,0xffe0a0,22,4.5,1.4);if(w.hand)buzz(w.hand,1,90);if(w.hand2)buzz(w.hand2,1,90);state.hitstop=.06;w.blockT=.15;}
+   if(e.state==='strike'&&!e.hitDone){e.parried();e.stagger*=PROG.parryMul();sfx('clash',_v1,1);fx.spark(_v1,0xffe0a0,22,4.5,1.4);if(w.hand)buzz(w.hand,1,90);if(w.hand2)buzz(w.hand2,1,90);state.hitstop=.06;w.blockT=.15;}
    else if(sp>2){sfx(isShield?'block':'clash',_v1,clamp(sp/7,.3,.9));fx.spark(_v1,0xffd080,12,3);w.blockT=.25;if(w.state==='held'){w.recoil.copy(_v2.subVectors(w.b,w.pb)).normalize().multiplyScalar(-.05);if(w.hand)buzz(w.hand,.6,50);}
     e.onBlocked(w,sp);}}
   /* body hits */
@@ -1411,7 +1414,7 @@ function combat(dt){
    else if(D.tip&&ht>.8&&axial>1.8){dmg=D.dmg*clamp(axial/4.5,.25,1.8)*1.1;kind='stab';}
    else if(lat>1.8){dmg=D.dmg*clamp((lat-1.5)/5,.15,1.7);kind=D.kind==='pierce'?'blunt':'cut';}
    else continue;
-   dmg*=hit.mult*(w.hand2?1.3:1)*(w.state==='free'?1.2:1);if(w.imbue==='fire'){dmg*=1.35;e.burn=3;}if(w.imbue==='lightning'){e.shock=.6;fx.spark(at,0x9ad0ff,10,3);sfx('zap',at,.4);}
+   dmg*=hit.mult*(w.hand2?1.3:1)*(w.state==='free'?1.2:1)*PROG.meleeMul(w,e);if(w.imbue==='fire'){dmg*=1.35;e.burn=3;}if(w.imbue==='lightning'){e.shock=.6;fx.spark(at,0x9ad0ff,10,3);sfx('zap',at,.4);}
    if(dmg<3)continue;w.cool.set(e,clock+.38);
    e.damage(dmg,kind,at,vel,hit,w);
    if(w.hand)buzz(w.hand,clamp(dmg/35,.25,1),60);if(w.hand2)buzz(w.hand2,clamp(dmg/35,.25,1),60);if(dmg>30)state.hitstop=.045;
@@ -1421,6 +1424,128 @@ function combat(dt){
   /* corpses & gibs */
   if(sp>3)for(const rd of ragdolls){if(rd.P[2].p.distanceTo(w.b)>2)continue;for(const q of rd.P){if(Math.sqrt(pointSeg(q.p,w.a,w.b))<.13*rd.s){const v=_v2.lerpVectors(_v3.subVectors(w.a,w.pa),_v4.subVectors(w.b,w.pb),S.t);q.o.addScaledVector(v,-.5);if((w.cool.get(rd)||0)<clock){w.cool.set(rd,clock+.3);fx.blood(q.p,v.normalize(),6,rd.e.type==='skeleton'?0xd8ccb0:0x8a0a0a,1.5);sfx(rd.e.type==='skeleton'?'bone':'flesh',q.p,.4);if(w.hand)buzz(w.hand,.3,30);}break;}}}
  }}
+
+/* ============================== PROGRESSION ============================== */
+const XP_BASE={bandit:20,archer:35,skeleton:40,knight:90,brute:110,wraith:150};
+const SKILLS={
+ B1:{b:0,name:'Sharpening',cost:1,req:[],desc:'+10% melee damage'},
+ B2:{b:0,name:'Weapon Drill',cost:2,req:['B1'],desc:'+15% vs armour, +25% vs wind-ups'},
+ B3:{b:0,name:'Shield Work',cost:2,req:['B1'],desc:'Parry stagger +50%, shield -15% hurt'},
+ B4:{b:0,name:'Heavy Hand',cost:3,req:['B2'],desc:'+20% with axe, mace, greatsword, maul'},
+ B5:{b:0,name:'Executioner',cost:4,req:['B3','B4'],any:true,desc:'Double damage under 20% HP'},
+ S1:{b:1,name:'Ember Focus',cost:1,req:[],spell:'fire',desc:'Learn Fireball, +10% max mana'},
+ S2:{b:1,name:'Storm Channel',cost:2,req:['S1'],spell:'lightning',desc:'Learn Lightning'},
+ S3:{b:1,name:'Gravity Well',cost:2,req:['S1'],spell:'push',desc:'Learn Gravity Push, -10% cost'},
+ S4:{b:1,name:'Time Dilation',cost:3,req:['S2'],spell:'slow',desc:'Learn Slow Time, +2 s'},
+ S5:{b:1,name:'Arcane Mastery',cost:4,req:['S3','S4'],desc:'-15% spell cost, +20% spell dmg'},
+ V1:{b:2,name:'Iron Constitution',cost:1,req:[],desc:'+20 max HP'},
+ V2:{b:2,name:'Second Wind',cost:2,req:['V1'],desc:'2 HP/s after 5 s unhurt'},
+ V3:{b:2,name:'Deep Reserves',cost:2,req:['V1'],desc:'+25% mana regeneration'},
+ V4:{b:2,name:'Evasion',cost:3,req:['V2','V3'],any:true,desc:'15% chance to ignore a hit'},
+ V5:{b:2,name:'Undying',cost:4,req:['V4'],desc:'Survive a lethal hit, once / 10 min'}};
+const BRANCHES=['Blade','Sorcery','Survival'];
+const SPELL_NODE={fire:'S1',lightning:'S2',push:'S3',slow:'S4'};
+const HEAVY=['axe','mace','greatsword','maul'];
+const DROPS={knight:[.04,['shield','longsword']],brute:[.03,['mace','axe']],bandit:[.01,['spear']]};
+const BOSS_DROPS=['spear','axe','mace','longsword','shield','greatsword','maul'];
+const progDefault=()=>({level:1,xp:0,gold:0,points:1,skills:[],kills:{}});
+const PROG={maxLevel:20,manaRegen:5,hpRegen:0,regenDelay:5,cd:{fire:0,push:0,slow:0},recent:{},undyingT:0,toast:'',toastT:0,yT:0,yHeld:false,drops:[],panelKey:'',
+ shop:[{id:'spear',price:250},{id:'axe',price:400},{id:'mace',price:450},{id:'shield',price:500},{id:'longsword',price:600},{id:'greatsword',price:1500,minLevel:10}],
+ has(id){return SAVE.prog.skills.includes(id);},
+ need(L){return Math.round(50*Math.pow(L,1.5));},
+ costMul(){return (this.has('S3')?.9:1)*(this.has('S5')?.85:1);},
+ cost(sp){return (SPELLS[sp].cost||0)*this.costMul();},
+ spellMul(){return this.has('S5')?1.2:1;},
+ slowDur(){return 6+(this.has('S4')?2:0);},
+ parryMul(){return this.has('B3')?1.5:1;},
+ meleeMul(w,e){let m=1;if(this.has('B1'))m*=1.1;if(this.has('B2')){if(e.type==='knight'||e.type==='brute')m*=1.15;if(e.state==='windup')m*=1.25;}
+  if(this.has('B4')&&HEAVY.includes(w.id))m*=1.2;if(this.has('B5')&&e.maxHp&&e.hp<e.maxHp*.2)m*=2;return m;},
+ hurt(dmg){if(this.has('V4')&&Math.random()<.15){sfx('whoosh',headPos,.5,1.6);toast('Evaded');return 0;}
+  if(this.has('B3')&&hands.some(h=>h.held&&h.held.d.shield))dmg*=.85;
+  if(player.hp-dmg<=0&&this.has('V5')&&clock>=this.undyingT){this.undyingT=clock+600;toast('Undying!');sfx('reward',null,.6);fade.hurt=1;return Math.max(0,player.hp-1);}
+  return dmg;},
+ cdText(){const l=['fire','push','slow'].filter(spellKnown).map(s=>[s,(this.cd[s]||0)-clock]).filter(c=>c[1]>0);return l.length?'   CD '+l.map(c=>`${SPELLS[c[0]].name.split(' ')[0]} ${c[1].toFixed(1)}`).join(' '):'';},
+ canLearn(id){const s=SKILLS[id];if(!s||this.has(id)||SAVE.prog.points<s.cost)return false;return s.any?s.req.some(r=>this.has(r)):s.req.every(r=>this.has(r));},
+ learn(id){if(!this.canLearn(id))return false;const s=SKILLS[id];SAVE.prog.points-=s.cost;SAVE.prog.skills.push(id);applyStats(false);save();sfx('reward',null,.5);
+  if(s.spell)say(`${SPELLS[s.spell].name} is yours now.${s.spell==='slow'?' Press X (T on desktop).':' Press Y or B (R on desktop) to choose it.'}`);return true;},
+ reset(){SAVE.prog=progDefault();SAVE.weapons=['rusty','dagger'];SAVE.spells=[];this.recent={};this.cd={fire:0,push:0,slow:0};this.undyingT=0;applyStats(true);save();}};
+function progMigrate(){
+ if(!SAVE.prog||typeof SAVE.prog!=='object'){const p=progDefault();
+  if(SAVE.done>0){p.level=Math.min(20,1+2*SAVE.done);p.points=p.level+Math.floor(p.level/5);}
+  if(!SAVE.done&&SAVE.weapons.join()==='longsword,dagger')SAVE.weapons=['rusty','dagger'];SAVE.prog=p;}
+ SAVE.prog={...progDefault(),...SAVE.prog};if(!Array.isArray(SAVE.prog.skills))SAVE.prog.skills=[];if(!SAVE.prog.kills||typeof SAVE.prog.kills!=='object')SAVE.prog.kills={};}
+function spellKnown(s){return SAVE.spells.includes(s)||(!!SPELL_NODE[s]&&!!SAVE.prog&&SAVE.prog.skills.includes(SPELL_NODE[s]));}
+function applyStats(full){const p=SAVE.prog;const mhp=100+10*(p.level-1)+(PROG.has('V1')?20:0),mmp=Math.round((60+8*(p.level-1))*(PROG.has('S1')?1.1:1));
+ const dh=mhp-player.maxHp,dm=mmp-player.maxMana;player.maxHp=mhp;player.maxMana=mmp;
+ if(full){player.hp=mhp;player.mana=mmp;}else{player.hp=Math.min(mhp,player.hp+Math.max(0,dh));player.mana=Math.min(mmp,player.mana+Math.max(0,dm));}
+ PROG.manaRegen=5*(PROG.has('V3')?1.25:1);PROG.hpRegen=PROG.has('V2')?2:0;PROG.regenDelay=5;}
+function toast(t){PROG.toast=t;PROG.toastT=2.5;}
+/* XP for a kill: base by type, boss x10, tier factor, level-gap and repeat-kill decay */
+function killXP(e){const t=clamp(Math.round(e.tier||state.tier||1),1,5);const base=(XP_BASE[e.type]||20)*(e.boss?10:1)*(1+.5*(t-1));
+ const gap=SAVE.prog.level-(t*4-2);const gm=gap>=6?.1:gap>=3?.4:gap<=-3?1.3:1;
+ const key=e.type+'@'+(state.region||state.chapter||0);const arr=PROG.recent[key]=(PROG.recent[key]||[]).filter(x=>clock-x<600);const n=arr.length;const dm=e.boss?1:n>=16?.25:n>=8?.5:1;
+ return{xp:Math.max(1,Math.round(base*gm*dm)),key,gap:gm,decay:dm,tier:t};}
+function addXP(n){const p=SAVE.prog;if(p.level>=PROG.maxLevel){p.xp=0;return 0;}p.xp+=Math.round(n);let up=0;
+ while(p.level<PROG.maxLevel&&p.xp>=PROG.need(p.level)){p.xp-=PROG.need(p.level);p.level++;p.points+=1+(p.level%5===0?1:0);up++;}
+ if(p.level>=PROG.maxLevel)p.xp=0;if(up)levelUp(up);return up;}
+function grantKillXP(e){if(!e||e.dummy||e.xpGiven)return 0;e.xpGiven=true;const r=killXP(e);PROG.recent[r.key].push(clock);const p=SAVE.prog;
+ p.kills[e.type]=(p.kills[e.type]||0)+1;const gold=e.boss?100*r.tier:r.tier*(3+Math.floor(Math.random()*6));p.gold+=gold;addXP(r.xp);toast(`+${r.xp} XP  +${gold} gold`);
+ const drop=rollDrop(e);if(drop){const at=e.parts?.[1]?.mid?e.parts[1].mid.clone():e.pos?e.pos.clone():_v1.copy(headFwd).multiplyScalar(1.5).add(headPos).clone();at.y=floorY(at.x,at.z)+1;dropWeapon(drop,at,!!e.boss);}
+ save();return r.xp;}
+function grantReward(r={}){const p=SAVE.prog;if(r.gold)p.gold+=r.gold;if(r.skillPoint)p.points+=r.skillPoint===true?1:r.skillPoint;
+ if(r.spell){const id=SPELL_ID[r.spell]||r.spell;if(!SAVE.spells.includes(id))SAVE.spells.push(id);}
+ if(r.weapon){const id=WEAPON_ID[r.weapon]||r.weapon;if(WDEF[id]){if(state.inHub){ownWeapon(id);if(W.rack)fillRack();}else{const at=_v1.copy(headFwd).multiplyScalar(1.2).add(headPos).clone();at.y+=.3;dropWeapon(id,at,true);}}}
+ if(r.xp)addXP(r.xp);save();}
+/* weapons: rare drops, boss drops, shop */
+function rollDrop(e,rnd=Math.random){const own=x=>SAVE.weapons.includes(x);
+ if(e.boss){const pool=BOSS_DROPS.filter(x=>!own(x));return pool.length?pool[Math.floor(rnd()*pool.length)]:null;}
+ const d=DROPS[e.type];if(!d||rnd()>=d[0])return null;const o=d[1].filter(x=>!own(x));return o.length?o[Math.floor(rnd()*o.length)]:null;}
+function ownWeapon(id){if(SAVE.weapons.includes(id))return false;SAVE.weapons.push(id);save();sfx('reward',null,.6);say(`The ${WDEF[id].name} is yours now. It will wait on the rack in the Lantern Yard.`);return true;}
+const beamGeo=new THREE.CylinderGeometry(.04,.16,3.2,10,1,true),beamMat=new THREE.MeshBasicMaterial({color:0xffd27a,transparent:true,opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,fog:false,toneMapped:false});
+/* a dropped weapon glows with a light beam; rare drops become yours when picked up, boss/reward drops (grant) are yours at once */
+function dropWeapon(id,pos,grant){const w=spawnWeapon(id,pos);w.vel.set(rr(-.5,.5),2.5,rr(-.5,.5));w.ang.set(rr(-3,3),rr(-3,3),rr(-3,3));const beam=new THREE.Mesh(beamGeo,beamMat);beam.renderOrder=5;scene.add(beam);
+ PROG.drops.push({w,beam});fx.spark(pos,0xffd27a,30,3,1.6,-1);sfx('reward',pos,.5);if(grant)ownWeapon(id);else toast(`${WDEF[id].name} dropped!`);return w;}
+function buyWeapon(id){const it=PROG.shop.find(s=>s.id===id);if(!it)return{ok:false,reason:'not sold'};if(SAVE.weapons.includes(id))return{ok:false,reason:'already owned'};
+ if(it.minLevel&&SAVE.prog.level<it.minLevel)return{ok:false,reason:`requires level ${it.minLevel}`};if(SAVE.prog.gold<it.price)return{ok:false,reason:'not enough gold'};
+ SAVE.prog.gold-=it.price;SAVE.weapons.push(id);save();sfx('reward',null,.6);if(state.inHub&&W.rack)fillRack();return{ok:true};}
+/* level-up feedback */
+const lvlPanel=new Panel(1.1,.32,880,256,{order:21});lvlPanel.mesh.visible=false;lvlPanel.mesh.material.depthTest=false;scene.add(lvlPanel.mesh);let lvlT=0;
+function levelUp(n){const p=SAVE.prog;applyStats(true);sfx('reward',null,.9);
+ const L=lvlPanel;L.clear();L.bg('rgba(20,14,8,.9)','rgba(255,200,90,.95)');L.text('LEVEL '+p.level,440,130,96,'#ffd27a','Cinzel',800,'center');L.text(`+${10*n} HP · +${8*n} MP · ${p.points} skill point${p.points===1?'':'s'} to spend`,440,200,34,'#efe6d2','Alegreya Sans',600,'center');L.update();
+ _v1.copy(headFwd).multiplyScalar(1.8).add(headPos);L.mesh.position.set(_v1.x,headPos.y+.25,_v1.z);L.mesh.lookAt(headPos);L.mesh.visible=true;lvlT=3.5;
+ _v2.copy(headFwd).multiplyScalar(.9).add(headPos);fx.spark(_v2,0xffd27a,60,4,2,-1);for(let i=0;i<12;i++){const a=i/12*TAU;fx.spark(_v3.set(headPos.x+Math.sin(a)*.8,rig.position.y+.1,headPos.z+Math.cos(a)*.8),0xffe6a0,4,2,1.5,-3);}
+ say(`Level ${p.level}. You grow stronger. ${XR?'Hold Y':'Press K'} to spend your skill points.`);}
+/* skill tree panel */
+const skillPanel=new Panel(1.44,1.0,1280,890,{interactive:true,order:14});skillPanel.mesh.visible=false;
+function drawSkillPanel(){const P=skillPanel,p=SAVE.prog;P.clear();P.bg('rgba(14,11,20,.93)');
+ P.text('LEVEL '+p.level,60,82,52,'#e9874a','Cinzel',800);const g=P.g,need=PROG.need(p.level),f=p.level>=PROG.maxLevel?1:p.xp/need;
+ g.fillStyle='rgba(255,255,255,.12)';g.fillRect(330,50,520,30);g.fillStyle='#b48aff';g.fillRect(330,50,520*clamp(f,0,1),30);g.strokeStyle='rgba(233,135,74,.7)';g.lineWidth=2;g.strokeRect(330,50,520,30);
+ P.text(p.level>=PROG.maxLevel?'MAX LEVEL':`XP ${p.xp} / ${need}`,590,74,24,'#efe6d2','Alegreya Sans',700,'center');
+ P.text(`${p.gold} gold`,1220,66,30,'#e8c04a','Alegreya Sans',700,'right');P.text(`${p.points} skill point${p.points===1?'':'s'}`,1220,106,30,p.points?'#9fe08a':'#a89f90','Alegreya Sans',700,'right');
+ P.text(`Max HP ${player.maxHp} · Max MP ${player.maxMana}`,60,128,24,'#a89f90','Alegreya Sans',600);
+ BRANCHES.forEach((b,c)=>{const x=40+c*410;P.text(b.toUpperCase(),x+195,190,34,'#e9874a','Cinzel',800,'center');
+  Object.entries(SKILLS).filter(([,s])=>s.b===c).forEach(([id,s],i)=>{const y=210+i*118,own=PROG.has(id),can=PROG.canLearn(id);
+   const req=s.req.length?'needs '+s.req.map(r=>SKILLS[r].name).join(s.any?' or ':' + '):'';
+   const sub=own?s.desc:can?`${s.cost} pt · ${s.desc}`:(s.any?s.req.some(r=>PROG.has(r)):s.req.every(r=>PROG.has(r)))?`${s.cost} pt · not enough points`:req;
+   P.button(id,(own?'✓ ':'')+s.name,x,y,390,104,{active:own,disabled:!own&&!can,size:28,sub});
+   if(i<4){g.fillStyle='rgba(233,135,74,.5)';g.fillRect(x+192,y+104,6,14);}});});
+ P.button('close','Close',440,808,400,62,{size:28});P.text(XR?'Hold Y to close':'K to close',1220,850,22,'#6a6276','Alegreya Sans',500,'right');P.update();
+ PROG.panelKey=[p.level,p.xp,p.gold,p.points,p.skills.length].join();}
+function onSkillPanel(id){if(id==='close'){closeSkillPanel();return;}if(!PROG.learn(id))sfx('ui',null,.3,.5);drawSkillPanel();}
+skillPanel.redraw=drawSkillPanel;skillPanel.onClick=onSkillPanel;
+function openSkillPanel(){const m=skillPanel.mesh;_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);m.position.set(_v1.x,headPos.y-.1,_v1.z);m.lookAt(headPos);skillPanel.hover=null;drawSkillPanel();scene.add(m);m.visible=true;sfx('ui',null,.5);}
+function closeSkillPanel(){const m=skillPanel.mesh;m.visible=false;if(m.parent)scene.remove(m);skillPanel.hover=null;}
+function toggleSkillPanel(){if(skillPanel.mesh.visible)closeSkillPanel();else openSkillPanel();}
+addEventListener('keydown',e=>{if(!XR&&state.mode==='play'&&e.code==='KeyK')toggleSkillPanel();});
+function updateProgression(dt){
+ const L=hands[0];if(XR){if(pressed(L,'b')){PROG.yT=0;PROG.yHeld=false;}if(L.b.b&&!PROG.yHeld){PROG.yT+=dt;if(PROG.yT>=.6){PROG.yHeld=true;toggleSkillPanel();buzz(L,.5,60);}}}
+ if(skillPanel.mesh.visible){if(state.mode!=='play'||skillPanel.mesh.position.distanceTo(headPos)>3.2)closeSkillPanel();else{const p=SAVE.prog;if([p.level,p.xp,p.gold,p.points,p.skills.length].join()!==PROG.panelKey)drawSkillPanel();}}
+ if(lvlT>0){lvlT-=dt;const a=3.5-lvlT;lvlPanel.mesh.material.opacity=clamp(Math.min(lvlT,a*4),0,1);lvlPanel.mesh.scale.setScalar(1+.2*Math.max(0,1-a*3));if(lvlT<=0)lvlPanel.mesh.visible=false;}
+ if(PROG.toastT>0)PROG.toastT-=dt;
+ for(let i=PROG.drops.length-1;i>=0;i--){const d=PROG.drops[i],w=d.w,gone=!weapons.includes(w);
+  if(gone||w.state==='held'||w.state==='holster'){if(!gone)ownWeapon(w.id);scene.remove(d.beam);PROG.drops.splice(i,1);continue;}
+  const p=w.obj.position;d.beam.position.set(p.x,floorY(p.x,p.z)+1.6,p.z);d.beam.material.opacity=.25+.12*Math.sin(clock*4);}}
+progMigrate();applyStats(true);
 
 /* ============================== STORY ============================== */
 const STORY={"title": "Hollowmere: The Cold Crown", "tagline": "Cut through the frost-crowned dead to break the Hollow King's grip.", "mentor": {"name": "Idris Vane", "description": "A grey-bearded lamplighter who once served the Hollow King and now hunts what he left behind."}, "hub": {"name": "The Lantern Yard", "biome": "dawn meadow", "intro": ["Welcome to Hollowmere. The frost came out of the wood three winters ago and has not left.", "The Hollow King wears a crown of ice, and every dead thing that wakes in the wood answers to it.", "Your blade is steady. Take the road into the wood, and bring back what you find."], "returnLines": ["The frost pulled back a little. Rest, then go again.", "Another stretch of road is clear. The King will notice."]}, "chapters": [{"id": 1, "name": "The Edge of the Wood", "biome": "deep forest day", "objective": "Clear the bandit camp at the forest edge.", "intro": ["The wood was ours once. Now the trees hold bandits and worse.", "Keep your dagger for close work. The longsword will handle the rest.", "Stay on your feet. Bandits rush before they talk."], "waves": [{"enemies": {"bandit": 2}, "line": "Two bandits by the fallen log. Let them come to you."}, {"enemies": {"bandit": 1, "bandit archer": 2}, "line": "Archers in the roots. Close the distance fast."}, {"enemies": {"skeleton": 2, "bandit": 1}, "line": "Something under the leaves is rising. Skeletons. Hold your ground."}], "boss": null, "outro": ["The camp is quiet now. Someone was keeping a ledger of the dead.", "Take the ledger. It names the King's next target at the black water."], "reward": {"kind": "spell", "id": "fireball"}}, {"id": 2, "name": "Black Water Ferry", "biome": "swamp dusk", "objective": "Cross the marsh and break the skeleton line at the ferry.", "intro": ["The marsh swallows sound and light. Watch your footing.", "The ferry is the King's road north. Whoever holds it holds the wood.", "Skeletons walk the reeds like they remember the way."], "waves": [{"enemies": {"skeleton": 2, "bandit": 1}, "line": "Three of them, moving through the reeds."}, {"enemies": {"bandit archer": 1, "skeleton": 2}, "line": "Archer on the ferry post. Get low and close the gap."}, {"enemies": {"armored knight": 1, "skeleton": 3}, "line": "A knight with a shield walks out of the mist. Go for his feet."}], "boss": null, "outro": ["The ferry is broken and the far bank is ours. For now.", "A knight's shield was left on the dock. Someone wanted you to find it."], "reward": {"kind": "weapon", "id": "round shield"}}, {"id": 3, "name": "The Frozen Pass", "biome": "snowy pass night with aurora", "objective": "Defeat Halvard the Unbent at the top of the pass.", "intro": ["The snow here does not melt, even at noon.", "The wraiths above are the King's eyes. Dodge their dark orbs and close in.", "Something heavy is coming down the ridge. Hold your ground when it arrives."], "waves": [{"enemies": {"wraith": 1, "skeleton": 2, "bandit archer": 1}, "line": "Wraiths above the drifts. Keep moving so their orbs miss."}, {"enemies": {"brute": 1, "skeleton": 2, "bandit": 1}, "line": "A brute is climbing the switchbacks. Watch his mace swing."}, {"enemies": {"armored knight": 1, "skeleton": 2, "wraith": 1, "bandit archer": 1}, "line": "Halvard is here. He was a knight of the crown. Do not let him set the pace."}], "boss": {"name": "Halvard the Unbent", "type": "armored knight", "taunt": ["I swore an oath to the crown. You will not pass.", "Stand still and let the cold settle in."], "deathLine": "The oath ends here. Let the snow take me."}, "outro": ["The pass is open. The aurora above is green for the first time in months.", "Beyond the pass, the keep of Ashgrave rises out of the storm."], "reward": {"kind": "spell", "id": "lightning"}}, {"id": 4, "name": "Ashgrave Keep", "biome": "ruined castle thunderstorm", "objective": "Fight through the courtyard and reach the keep stairs.", "intro": ["Ashgrave kept its bells for a hundred years, until the King came for them.", "Storm on the walls, and the dead are on the stairs.", "The keep has one way up, through the courtyard and the gate."], "waves": [{"enemies": {"bandit": 2, "brute": 1, "skeleton": 1}, "line": "A brute waits by the gate. Stay out of his swing arc."}, {"enemies": {"wraith": 2, "armored knight": 1, "skeleton": 2}, "line": "Wraiths in the arrow slits. Keep moving through the courtyard."}, {"enemies": {"brute": 1, "skeleton": 3, "bandit archer": 1}, "line": "Thunder, then the keep wakes up. Hold the stairs."}], "boss": null, "outro": ["The gate is open. Thunder rolls over the courtyard and the bells are finally quiet.", "The stairs lead toward the throne. The air up there tastes like frost."], "reward": {"kind": "spell", "id": "slow time"}}, {"id": 5, "name": "The Siege Meadow", "biome": "dawn meadow", "objective": "Break the siege lines before the sun clears the hill.", "intro": ["This meadow fed Hollowmere for generations. Now it feeds the siege.", "The sun will rise soon, and the dead do not like daylight.", "Push through the lines before the light reaches the lower field."], "waves": [{"enemies": {"skeleton": 2, "armored knight": 1, "bandit": 2}, "line": "The siege lines are dug in. Start with the knight's shield."}, {"enemies": {"brute": 1, "wraith": 2, "bandit archer": 2, "skeleton": 1}, "line": "Archers on the hill and a brute in the center. Split your attention."}, {"enemies": {"armored knight": 2, "skeleton": 2, "wraith": 1, "bandit archer": 1}, "line": "Two knights at the last tent. Break their guard and keep moving."}], "boss": null, "outro": ["The siege line is broken. The sun comes up over the meadow for the first time in weeks.", "Past the last tent, a red sky waits. The throne is close."], "reward": {"kind": "weapon", "id": "greatsword"}}, {"id": 6, "name": "Throne Under a Red Sky", "biome": "red eclipse wasteland", "objective": "Reach the throne and break the Hollow King's crown.", "intro": ["This is the last of it. The Hollow King sits under a sky gone red.", "The crown is the source of the frost. Break it and the dead lose their shape.", "There is no road back from here. Go up the steps."], "waves": [{"enemies": {"skeleton": 3, "bandit": 2, "wraith": 1}, "line": "The first guard is already moving. Do not wait for them to surround you."}, {"enemies": {"armored knight": 2, "brute": 1, "wraith": 2, "bandit archer": 2}, "line": "The King's honor guard. Take the knights down first."}, {"enemies": {"brute": 1, "skeleton": 3, "armored knight": 2, "wraith": 2}, "line": "The King is on the steps. Everything he has is here."}], "boss": {"name": "The Hollow King", "type": "brute", "taunt": ["You walked into my cold house, mortal.", "Kneel now, and I will make it quick."], "deathLine": "Cold is all that is left of me. Light, then. Let it burn."}, "outro": ["The crown cracks and the frost goes out of the stone like breath from a dying fire.", "The lamplighter stands over the throne and does not look away."], "reward": {"kind": "spell", "id": "gravity push"}}], "ending": ["The Hollow King fell, and the cold went out of the crown like breath from a closed room.", "Hollowmere's lanterns came back on one by one, all the way to the edge of the wood.", "The dead lay still. Some of them looked like neighbors you could have known.", "The lamplighter buried the crown in the meadow where the harvest used to grow.", "Far north, under the red sky, something has begun to hum. The wood still keeps its secrets."], "deathLines": ["The cold takes you. The lamp goes out.", "You are down in the frost. Get up when you can.", "The Hollow King keeps what he takes. Try again."]};
@@ -1440,9 +1565,9 @@ let npc=null,dummy=null;const menu=new Panel(1.5,1.24,1200,992,{interactive:true
 let dummyPanel=null;
 function dummyHit(dmg,kind,part){if(!dummyPanel)return;dummyPanel.clear();dummyPanel.bg('rgba(14,11,20,.82)','rgba(233,135,74,.5)');dummyPanel.text('TRAINING DUMMY',240,44,26,'#e9874a','Cinzel',800,'center');dummyPanel.text(`${dmg}`,240,118,64,'#efe6d2','Alegreya Sans',700,'center');dummyPanel.text(`${kind} · ${part?part.k.replace(/[LR]$/,''):''}`,240,160,26,'#a89f90','Alegreya Sans',600,'center');dummyPanel.update();}
 function rackSlots(){const out=[];if(!W.rack)return out;W.rack.updateMatrixWorld();for(let i=0;i<6;i++)out.push(new V3(-1.45+i*.58,1.0,.18).applyMatrix4(W.rack.matrixWorld));return out;}
-function fillRack(){const slots=rackSlots();let k=0;const owned=id=>weapons.some(w=>w.owner==='player'&&w.id===id&&(w.state==='held'||w.state==='holster'));
- for(const id of ['longsword','dagger','axe','mace','spear',...SAVE.weapons.filter(x=>!['longsword','dagger'].includes(x))]){if(k>=slots.length)break;if(['axe','mace','spear'].includes(id)&&SAVE.done<1)continue;if(owned(id)&&!['dagger'].includes(id))continue;if(weapons.some(w=>w.id===id&&w.state==='rack'))continue;
-  const w=spawnWeapon(id,slots[k]);w.state='rack';w.obj.quaternion.setFromAxisAngle(UP,W.rack.rotation.y);if(id==='shield'){w.obj.quaternion.multiply(new QT().setFromAxisAngle(UP,Math.PI/2));}w.obj.position.y=slots[k].y-(id==='spear'?.2:0);w.seg();k++;}}
+function fillRack(){const slots=rackSlots();const owned=id=>weapons.some(w=>w.owner==='player'&&w.id===id&&(w.state==='held'||w.state==='holster'));const used=s=>weapons.some(w=>w.state==='rack'&&Math.hypot(w.obj.position.x-s.x,w.obj.position.z-s.z)<.25);
+ for(const id of SAVE.weapons){if(!WDEF[id])continue;if(owned(id)&&id!=='dagger')continue;if(weapons.some(w=>w.id===id&&w.state==='rack'))continue;const k=slots.findIndex(s=>!used(s));if(k<0)break;
+  const w=spawnWeapon(id,slots[k]);w.state='rack';w.obj.quaternion.setFromAxisAngle(UP,W.rack.rotation.y);if(id==='shield'){w.obj.quaternion.multiply(new QT().setFromAxisAngle(UP,Math.PI/2));}w.obj.position.y=slots[k].y-(id==='spear'?.2:0);w.seg();}}
 function buildNpc(){const n=buildEnemy('archer',false);n.root.position.set(1.8,floorY(1.8,-.6),-.6);const N=n.N;N.uarmL.rotation.set(.1,0,-.15);N.uarmR.rotation.set(-.5,0,.15);N.farmR.rotation.set(-.9,0,0);
  const lan=new THREE.Group();lan.add(new THREE.Mesh(merge([G(new THREE.CylinderGeometry(.05,.06,.14,6),'#2a2a2a',{}),G(new THREE.ConeGeometry(.07,.06,6),'#2a2a2a',{p:[0,.1,0]})]),MAT),new THREE.Mesh(G(new THREE.OctahedronGeometry(.045,0),'#ffd070',{}),MAT_GLOW));lan.position.set(0,-.4,0);N.farmR.add(lan);
  return{...n,yaw:0,talkT:0};}
@@ -1461,7 +1586,7 @@ function onMenu(id){sfx('ui',null,.6);
  if(id.startsWith('ch')){startChapter(+id.slice(2));return;}
  if(id.startsWith('turn-')){SAVE.turn=id.slice(5);save();}
  if(id.startsWith('q-')){SAVE.quality=id.slice(2);QF=QUALITY[SAVE.quality];save();enterHub(true);return;}
- if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,weapons:['longsword','dagger'],spells:[],seenIntro:false});save();enterHub(true);return;}state.resetArm=clock+3;}
+ if(id==='reset'){if(state.resetArm>clock){Object.assign(SAVE,{done:0,spells:[],seenIntro:false});PROG.reset();for(const k in regionState)delete regionState[k];save();enterHub(true);return;}state.resetArm=clock+3;}
  if(id==='next'){startChapter(state.chapter+1);return;}if(id==='hub'){enterHub();return;}if(id==='retry'){startChapter(state.chapter);return;}
  drawMenu();}
 function showEnd(final){const p=endPanel;p.clear();p.bg();p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[state.chapter-1].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');
@@ -1532,11 +1657,11 @@ function updateWaves(dt){
   if(q.boss){say(STORY.chapters[state.chapter-1].boss.taunt,q.boss);bossPanel.mesh.visible=true;drawBoss(e);}}
  if(!state.queue.length&&liveCount()===0&&state.wave>=0&&!state.waveDone){state.waveDone=true;player.hp=Math.min(player.maxHp,player.hp+30);player.mana=player.maxMana;
   if(state.wave<C.waves.length-1){state.pendingWave=state.wave+1;state.timer=4;setMusic('explore');}else chapterComplete();}}
-function onEnemyDeath(e){if(e.boss&&state.chapter){const C=STORY.chapters[state.chapter-1];if(C.boss)say(C.boss.deathLine,e.bossName);}}
+function onEnemyDeath(e){if(!e.dummy)grantKillXP(e);if(e.boss&&state.chapter){const C=STORY.chapters[state.chapter-1];if(C.boss)say(C.boss.deathLine,e.bossName);}}
 function chapterComplete(){const n=state.chapter,C=STORY.chapters[n-1];state.complete=true;setMusic(n===6?'end':'explore');say(C.outro);
  const r=C.reward;if(r.kind==='weapon'){const id=WEAPON_ID[r.id]||r.id;if(!SAVE.weapons.includes(id))SAVE.weapons.push(id);_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);_v1.y+=.3;const w=spawnWeapon(id,_v1);w.vel.set(0,1,0);}
  else{const id=SPELL_ID[r.id]||r.id;if(!SAVE.spells.includes(id))SAVE.spells.push(id);}
- SAVE.done=Math.max(SAVE.done,n);save();say(REWARD_LINES[r.id]||r.line);sfx('reward',null,.8);
+ SAVE.done=Math.max(SAVE.done,n);save();say(REWARD_LINES[r.id]||r.line);grantReward({xp:120*n,gold:50*n,skillPoint:1});sfx('reward',null,.8);
  if(n===6){say(STORY.ending,'');}
  setTimeout(()=>{if(state.chapter===n&&!state.inHub)showEnd(n===6);},n===6?26000:9000);state.justReturned=true;}
 async function onPlayerDeath(){player.dead=true;player.slow=false;fade.target=.85;say(pick(STORY.deathLines),'');hands.forEach(h=>{if(h.cast)endCast(h);});
@@ -1550,10 +1675,10 @@ function uiInteract(){
  for(const h of hands){h.uiHover=null;if(!XR&&h.i===0)continue;
   let o,d;if(XR){if(h.held||h.tk||h.part){if(!h.tk)h.laser.visible=false;h.dot.visible=false;continue;}o=h.aimO;d=h.aim;}else{o=headPos;d=camera.getWorldDirection(_v6).clone();}
   const hit=panelRay(o,d);
-  if(hit){const id=hit.panel.hit(hit.uv);if(hit.panel.hover!==id){hit.panel.hover=id;if(hit.panel===menu)drawMenu();else if(hit.panel===endPanel)showEndHover();}h.uiHover=hit.panel;
+  if(hit){const id=hit.panel.hit(hit.uv);if(hit.panel.hover!==id){hit.panel.hover=id;if(hit.panel===menu)drawMenu();else if(hit.panel===endPanel)showEndHover();else if(hit.panel.redraw)hit.panel.redraw();}h.uiHover=hit.panel;
    if(XR){h.laser.visible=true;h.laser.scale.set(1,1,o.distanceTo(hit.point));h.dot.visible=true;h.dot.position.copy(hit.point);}
-   const click=XR?pressed(h,'trig'):deskClick;if(click&&id){buzz(h,.3,30);onMenu(id);}}
-  else{if(XR&&!h.tk){h.laser.visible=false;}h.dot.visible=false;for(const p of panels)if(p.hover){p.hover=null;if(p===menu)drawMenu();else if(p===endPanel)showEndHover();}}}
+   const click=XR?pressed(h,'trig'):deskClick;if(click&&id){buzz(h,.3,30);if(hit.panel.onClick)hit.panel.onClick(id);else onMenu(id);}}
+  else{if(XR&&!h.tk){h.laser.visible=false;}h.dot.visible=false;for(const p of panels)if(p.hover){p.hover=null;if(p===menu)drawMenu();else if(p===endPanel)showEndHover();else if(p.redraw)p.redraw();}}}
  deskClick=false;}
 function showEndHover(){const p=endPanel;const keep=p.hover;showEnd.last=showEnd.last||false;p.clear();p.bg();const final=state.chapter===6;p.text(final?'THE CROWN IS BROKEN':'CHAPTER CLEARED',440,72,40,'#e9874a','Cinzel',800,'center');p.text(STORY.chapters[Math.max(0,state.chapter-1)].name,440,118,30,'#efe6d2','Alegreya Sans',600,'center');p.hover=keep;
  p.button('hub','Return to the Lantern Yard',60,160,760,90,{size:32});if(!final&&state.chapter<6)p.button('next',`Continue: ${STORY.chapters[state.chapter].name}`,60,270,760,90,{size:30});p.update();}
@@ -1577,11 +1702,12 @@ function frame(){
  for(const rd of ragdolls)stepRagdoll(rd,dtw);for(const g of gibs)stepGib(g,dtw);
  combat(dt);updateProjectiles(dtw);updateShock(dtw);fx.update(dtw);updateBolts(dt);updateWeather(dt,clock);updateWaves(dt);updateNpc(dt);
  if(flames)flames.forEach((f,i)=>{f.scale.setScalar((1+Math.sin(clock*13+i)*.1+Math.sin(clock*7.3)*.06));f.rotation.y+=dt*.6;});if(fireLight.intensity>0)fireLight.intensity=3.5+Math.sin(clock*11)*.5+Math.sin(clock*17)*.3;
- player.invuln=Math.max(0,player.invuln-dt);player.mana=Math.min(player.maxMana,player.mana+(hands.some(h=>h.cast)?2:9)*dt);if(clock-player.lastHurt>6&&!player.dead)player.hp=Math.min(player.maxHp,player.hp+3*dt);
+ player.invuln=Math.max(0,player.invuln-dt);player.mana=Math.min(player.maxMana,player.mana+(hands.some(h=>h.cast)?PROG.manaRegen*.25:PROG.manaRegen)*dt);if(clock-player.lastHurt>PROG.regenDelay&&!player.dead)player.hp=Math.min(player.maxHp,player.hp+PROG.hpRegen*dt);
+ updateProgression(dt);
  updateNarr(dt);hudT-=dt;if(hudT<=0){hudT=.1;drawWrist();}
  if(bossPanel.mesh.visible){bossPanel.mesh.position.copy(narrPos).y+=.34;bossPanel.mesh.lookAt(headPos.x,bossPanel.mesh.position.y,headPos.z);}
  updateFade(dt);updateListener();
- if(!XR){const hd=$('#hudD');hd.textContent=`HP ${Math.ceil(player.hp)}   MP ${Math.floor(player.mana)}${SAVE.spells.includes('slow')?`   TIME ${Math.floor(player.focus)}`:''}   ${spellList().length?'Spell: '+SPELLS[spellList()[hands[0].spell%spellList().length]].name:''}`;}
+ if(!XR){const hd=$('#hudD');hd.textContent=`Lv ${SAVE.prog.level}  XP ${SAVE.prog.xp}/${PROG.need(SAVE.prog.level)}  Gold ${SAVE.prog.gold}${SAVE.prog.points?`  (${SAVE.prog.points} skill pts: K)`:''}   HP ${Math.ceil(player.hp)}/${player.maxHp}   MP ${Math.floor(player.mana)}${spellKnown('slow')?`   TIME ${Math.floor(player.focus)}`:''}   ${spellList().length?'Spell: '+SPELLS[spellList()[hands[0].spell%spellList().length]].name:''}${PROG.cdText()}${PROG.toastT>0?'   '+PROG.toast:''}`;}
  if(!(window.HM&&HM.noRender))renderer.render(scene,camera);}
 renderer.setAnimationLoop(frame);
 
@@ -1605,6 +1731,7 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
  else{$('#b-vr').textContent='VR not available here';$('#status').textContent+=' · WebXR needs HTTPS and a VR browser';}
 })();
 window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,startChapter,enterHub,startWave,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
+Object.assign(window.HM,{PROG,SKILLS,SPELLS,grantKillXP,grantReward,buyWeapon,rollDrop,spellKnown,spellList,openSkillPanel,closeSkillPanel,toggleSkillPanel,skillPanel,explode});
 
 </script>
 </body>
