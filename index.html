@@ -498,9 +498,14 @@ QF=QUALITY[SAVE.quality]||1;
 let XR=false,clock=0,tScale=1;
 
 /* ---------- hand model ---------- */
-function handGeo(){const skin='#6a4a32',dark='#4a3222';const a=[G(new THREE.BoxGeometry(.03,.085,.1),skin,{p:[-.045,0,.0],warp:.004}),G(new THREE.BoxGeometry(.035,.06,.05),dark,{p:[-.045,-.01,.075]})];
- for(let i=0;i<4;i++){const z=-.035+i*.024;a.push(G(new THREE.TorusGeometry(.03,.011,4,6,Math.PI*1.25),i%2?skin:dark,{p:[-.012,0,z],r:[0,0,-Math.PI*.55]}));}
- a.push(G(new THREE.CapsuleGeometry(.011,.04,2,5),skin,{p:[-.02,.045,-.045],r:[.9,0,.4]}));return merge(a);}
+function handGeo(){const skin='#6a4a32',dark='#4a3222';
+ /* palm, wrist cuff at +y, four fingers wrapping the grip (axis z) in two segments each, angled thumb */
+ const a=[G(new THREE.BoxGeometry(.03,.085,.1),skin,{p:[-.045,0,0],warp:.004}),G(new THREE.BoxGeometry(.042,.036,.11),dark,{p:[-.045,.063,0]})];
+ for(let i=0;i<4;i++){const z=-.036+i*.024;
+  a.push(G(new THREE.TorusGeometry(.03,.011,4,6,Math.PI*.6),skin,{p:[-.012,0,z],r:[0,0,Math.PI*.1]}));
+  a.push(G(new THREE.TorusGeometry(.03,.011,4,6,Math.PI*.65),dark,{p:[-.012,0,z],r:[0,0,-Math.PI*.55]}));}
+ a.push(G(new THREE.CapsuleGeometry(.011,.04,2,5),skin,{p:[-.02,.045,-.045],r:[.9,0,.4]}));
+ return merge(a);}
 const HAND_GEO=handGeo();
 const hands=[0,1].map(i=>{const h={i,side:i?'right':'left',connected:false,src:null,pos:new V3(),quat:new QT(),prev:new V3(),vel:new V3(),aim:new V3(),aimO:new V3(),
  trig:0,sq:0,b:{},pb:{},held:null,gripY:0,part:null,tk:null,spell:0,charge:0,cast:null,castT:0,imbueT:0,spellShowT:0,fingers:0};
@@ -809,34 +814,71 @@ function bodyGeo(type,boss,isKing){
   brute:{skin:isKing?'#9cb4c8':'#b07c5c',shirt:isKing?'#2c3a4c':'#5a4430',pants:'#3a2e24',boots:'#2a201a',hood:isKing?'#bfe6ff':'#6a4a2a'},
   skeleton:{skin:'#ddd2b8',shirt:'#ddd2b8',pants:'#ddd2b8',boots:'#ddd2b8',hood:'#4a3a2a'},
   wraith:{skin:'#c8c0d8',shirt:'#2a2238',pants:'#1e1a2a',boots:'#1e1a2a',hood:'#1c1828'}}[type];
- const sk=type==='skeleton',br=type==='brute',kn=type==='knight',wr=type==='wraith';
+ const sk=type==='skeleton',br=type==='brute',kn=type==='knight',wr=type==='wraith',ar=type==='archer';
+ const tw=br?1.35:1,lr=sk?.026:(br?1.3:1);
+ /* fist at the forearm end (wrist y~-.28, knuckle block forward at +z) */
+ const fist=(col,w)=>[G(new THREE.BoxGeometry(w,.07,.05),col,{p:[0,-.315,0]}),G(new THREE.BoxGeometry(w,.05,.03),col,{p:[0,-.33,.04]})];
+ /* boot: shaft over the shin end (y~-.43) with toe extension toward +z */
+ const boot=(col,w,h)=>[G(new THREE.BoxGeometry(w,h,.1),col,{p:[0,-.4,0]}),G(new THREE.BoxGeometry(w*.92,.05,.15),col,{p:[0,-.46,.07]})];
  /* pelvis & torso */
  if(sk){add('hips',G(new THREE.CylinderGeometry(.12,.1,.12,6),P.skin,{p:[0,0,0],s:[1,1,.6]}));add('torso',G(new THREE.CylinderGeometry(.028,.032,.55,6),P.skin,{p:[0,.27,-.04]}));
-  for(let i=0;i<5;i++)add('torso',G(new THREE.TorusGeometry(.12-i*.008,.014,4,10,Math.PI*1.4),P.skin,{p:[0,.24+i*.06,.01],r:[Math.PI/2,0,-Math.PI*.2],s:[1,.8,1]}));add('torso',G(new THREE.BoxGeometry(.36,.04,.06),P.skin,{p:[0,.5,0]}));}
- else{const tw=br?1.35:1;add('hips',G(new THREE.CylinderGeometry(.14*tw,.15*tw,.2,8),P.pants,{p:[0,.02,0],s:[1,1,.75]}));
-  add('torso',G(new THREE.CylinderGeometry(.17*tw,.13*tw,.52,8,2),P.shirt,{p:[0,.28,0],s:[1,1,.7],warp:.006}));add('torso',G(new THREE.TorusGeometry(.14*tw,.022,4,10),'#3a2a1c',{p:[0,.06,0],r:[Math.PI/2,0,0],s:[1,.72,1]}));
+  for(let i=0;i<5;i++)add('torso',G(new THREE.TorusGeometry(.12-i*.008,.014,4,10,Math.PI*1.4),P.skin,{p:[0,.24+i*.06,.01],r:[Math.PI/2,0,-Math.PI*.2],s:[1,.8,1]}));
+  add('torso',G(new THREE.BoxGeometry(.36,.04,.06),P.skin,{p:[0,.5,0]}));}
+ else{add('hips',G(new THREE.CylinderGeometry(.14*tw,.15*tw,.2,8),P.pants,{p:[0,.02,0],s:[1,1,.75]}));
+  add('torso',G(new THREE.CylinderGeometry(.18*tw,.13*tw,.52,8,2),P.shirt,{p:[0,.28,0],s:[1,1,.7],warp:.006}));
+  if(!wr){add('torso',G(new THREE.CylinderGeometry(.142*tw,.142*tw,.05,8),'#3a2a1c',{p:[0,.07,0],s:[1,1,.72]}));/* belt */
+   add('torso',G(new THREE.BoxGeometry(.045*tw,.04,.02),'#9a8450',{p:[0,.07,.1*tw]}));/* buckle */
+   add('torso',G(new THREE.CylinderGeometry(.1,.1,.06,7),P.shirt,{p:[0,.56,0]}));/* collar hides the neck base */}
   if(kn){add('torso',G(new THREE.BoxGeometry(.24,.55,.03),P.hood,{p:[0,.12,.12]}));add('torso',G(new THREE.CylinderGeometry(.19,.16,.3,8),P.shirt,{p:[0,.38,0],s:[1,1,.74]}));}
   if(type==='bandit')add('torso',G(new THREE.CylinderGeometry(.18,.15,.36,8,1,true),'#5a3e28',{p:[0,.32,0],s:[1,1,.74]}));
-  if(type==='archer'){add('torso',G(new THREE.ConeGeometry(.24,.75,7,1,true),P.hood,{p:[0,.2,-.06],s:[1,1,.6]}));add('torso',G(new THREE.BoxGeometry(.09,.4,.09),'#5a3a24',{p:[.08,.36,-.16],r:[0,0,.4]}));for(let i=0;i<4;i++)add('torso',G(new THREE.CylinderGeometry(.005,.005,.2,3),'#e8e0d0',{p:[.12+i*.015,.62,-.16],r:[0,0,.4]}));}
+  if(ar){add('torso',G(new THREE.ConeGeometry(.24,.75,7,1,true),P.hood,{p:[0,.2,-.06],s:[1,1,.6]}));add('torso',G(new THREE.BoxGeometry(.09,.4,.09),'#5a3a24',{p:[.08,.36,-.16],r:[0,0,.4]}));for(let i=0;i<4;i++)add('torso',G(new THREE.CylinderGeometry(.005,.005,.2,3),'#e8e0d0',{p:[.12+i*.015,.62,-.16],r:[0,0,.4]}));}
   if(br){add('torso',G(new THREE.IcosahedronGeometry(.2,1),isKing?'#3a4a60':'#5a4228',{p:[-.2,.5,0],s:[1,.6,1],warp:.04}));add('torso',G(new THREE.IcosahedronGeometry(.2,1),isKing?'#3a4a60':'#5a4228',{p:[.2,.5,0],s:[1,.6,1],warp:.04}));}
   if(wr){add('hips',G(new THREE.ConeGeometry(.42,1.05,9,2,true),P.shirt,{p:[0,-.42,0],r:[Math.PI,0,0],warp:.05}));add('torso',G(new THREE.ConeGeometry(.28,.62,8,1,true),P.shirt,{p:[0,.2,0],warp:.03}));}}
  /* head */
- if(sk){add('head',G(new THREE.IcosahedronGeometry(.1,1),P.skin,{p:[0,.15,0],s:[1,1.12,1.1]}));add('head',G(new THREE.BoxGeometry(.11,.04,.08),P.skin,{p:[0,.05,.04]}));for(const s of [-1,1])add('head',G(new THREE.BoxGeometry(.032,.03,.02),'#14100c',{p:[s*.038,.16,.1]}));add('head',G(new THREE.CylinderGeometry(.025,.025,.08,5),P.skin,{p:[0,0,0]}));}
- else{add('head',G(new THREE.CylinderGeometry(.05,.06,.1,6),P.skin,{p:[0,.04,0]}));add('head',G(new THREE.IcosahedronGeometry(.11,1),P.skin,{p:[0,.17,0],s:[.95,1.1,1.02]}));
-  if(!wr)for(const s of [-1,1])add('head',G(new THREE.BoxGeometry(.025,.018,.01),'#1a120c',{p:[s*.04,.19,.1]}));
+ if(sk){add('head',G(new THREE.CylinderGeometry(.024,.028,.16,5),P.skin,{p:[0,-.02,0]}));/* neck */
+  add('head',G(new THREE.IcosahedronGeometry(.1,1),P.skin,{p:[0,.16,0],s:[.95,1.05,1.05]}));/* cranium */
+  add('head',G(new THREE.BoxGeometry(.08,.04,.07),P.skin,{p:[0,.04,.05]}));/* lower jaw */
+  add('head',G(new THREE.BoxGeometry(.075,.012,.05),'#e8e0cc',{p:[0,.07,.075]}));/* teeth */
+  add('head',G(new THREE.BoxGeometry(.07,.05,.05),P.skin,{p:[0,.11,.07]}));/* cheekbones */
+  for(const s of[-1,1])add('head',G(new THREE.IcosahedronGeometry(.03,0),'#14100c',{p:[s*.04,.16,.085]}));/* eye sockets */
+  add('head',G(new THREE.BoxGeometry(.02,.03,.02),'#14100c',{p:[0,.12,.1]}));/* nasal cavity */}
+ else{add('head',G(new THREE.CylinderGeometry(.05,.058,.2,7),P.skin,{p:[0,0,0]}));/* neck, tucked into the head and collar */
+  add('head',G(new THREE.IcosahedronGeometry(.11,1),P.skin,{p:[0,.17,0],s:[.95,1.1,1.02]}));
+  if(!wr){add('head',G(new THREE.BoxGeometry(.09,.06,.08),P.skin,{p:[0,.06,.03]}));/* jaw */
+   add('head',G(new THREE.ConeGeometry(.018,.05,3),P.skin,{p:[0,.15,.115],r:[Math.PI/2,0,0]}));/* nose */
+   for(const s of[-1,1]){add('head',G(new THREE.BoxGeometry(.025,.018,.01),'#1a120c',{p:[s*.04,.19,.1]}));add('head',G(new THREE.BoxGeometry(.05,.012,.02),'#2a1c12',{p:[s*.04,.21,.1]}));}}
   if(type==='bandit')add('head',G(new THREE.ConeGeometry(.15,.26,8,1,true),P.hood,{p:[0,.24,-.02],warp:.01}));
-  if(type==='archer')add('head',G(new THREE.ConeGeometry(.155,.3,8,1,true),P.hood,{p:[0,.25,-.03],r:[-.15,0,0]}));
-  if(kn){add('head',G(new THREE.CylinderGeometry(.13,.125,.24,10),P.shirt,{p:[0,.18,0]}));add('head',G(new THREE.SphereGeometry(.13,10,4,0,TAU,0,Math.PI/2),P.shirt,{p:[0,.3,0]}));add('head',G(new THREE.BoxGeometry(.18,.022,.02),'#0c0c10',{p:[0,.2,.125]}));add('head',G(new THREE.ConeGeometry(.04,.3,5),P.hood,{p:[0,.44,-.04],r:[-.4,0,0]}));}
-  if(br){add('head',G(new THREE.ConeGeometry(.07,.14,6),isKing?'#cfe0ee':'#6a4426',{p:[0,.05,.085],r:[Math.PI+.25,0,0],warp:.01}));}
+  if(ar)add('head',G(new THREE.ConeGeometry(.155,.3,8,1,true),P.hood,{p:[0,.25,-.03],r:[-.15,0,0]}));
+  if(kn){add('head',G(new THREE.CylinderGeometry(.13,.125,.24,10),P.shirt,{p:[0,.18,0]}));add('head',G(new THREE.SphereGeometry(.13,10,4,0,TAU,0,Math.PI/2),P.shirt,{p:[0,.3,0]}));
+   add('head',G(new THREE.BoxGeometry(.18,.022,.02),'#0c0c10',{p:[0,.2,.125]}));/* visor slit */
+   add('head',G(new THREE.BoxGeometry(.03,.14,.03),P.shirt,{p:[0,.14,.13]}));/* nasal guard */
+   for(const s of[-1,1])add('head',G(new THREE.BoxGeometry(.035,.16,.12),P.shirt,{p:[s*.125,.13,.02]}));/* cheek plates */
+   add('head',G(new THREE.ConeGeometry(.04,.3,5),P.hood,{p:[0,.44,-.04],r:[-.4,0,0]}));}
+  if(br){add('head',G(new THREE.BoxGeometry(.14,.06,.12),P.skin,{p:[0,.07,.03]}));/* heavy jaw */
+   add('head',G(new THREE.BoxGeometry(.2,.03,.06),isKing?'#4a5a6c':'#7a5038',{p:[0,.21,.09]}));/* brow ridge */
+   for(const s of[-1,1])add('head',G(new THREE.ConeGeometry(.018,.07,4),'#e8dcc0',{p:[s*.07,.08,.1]}));/* tusks */
+   add('head',G(new THREE.ConeGeometry(.07,.14,6),isKing?'#cfe0ee':'#6a4426',{p:[0,.05,.085],r:[Math.PI+.25,0,0],warp:.01}));}
   if(wr){add('head',G(new THREE.ConeGeometry(.17,.36,8,1,true),P.hood,{p:[0,.22,-.02]}));add('head',G(new THREE.IcosahedronGeometry(.09,1),'#050308',{p:[0,.17,.03]}));}}
  /* limbs */
- const lr=sk?.026:(br?1.3:1);
- for(const s of ['L','R']){
-  if(sk){add('uarm'+s,G(new THREE.CylinderGeometry(.022,.02,.3,5),P.skin,{p:[0,-.15,0]}));add('farm'+s,G(new THREE.CylinderGeometry(.018,.016,.28,5),P.skin,{p:[0,-.14,0]}));add('farm'+s,G(new THREE.IcosahedronGeometry(.025,0),P.skin,{p:[0,0,0]}));
-   add('thigh'+s,G(new THREE.CylinderGeometry(.026,.022,.45,5),P.skin,{p:[0,-.225,0]}));add('shin'+s,G(new THREE.CylinderGeometry(.022,.018,.43,5),P.skin,{p:[0,-.215,0]}));add('shin'+s,G(new THREE.IcosahedronGeometry(.03,0),P.skin,{p:[0,0,0]}));add('shin'+s,G(new THREE.BoxGeometry(.06,.03,.15),P.skin,{p:[0,-.44,.04]}));}
-  else{add('uarm'+s,G(new THREE.CylinderGeometry(.055*lr,.045*lr,.3,7),wr?P.shirt:P.shirt,{p:[0,-.15,0]}));add('farm'+s,G(new THREE.CylinderGeometry(.045*lr,.034*lr,.28,7),kn?'#9aa2b0':(wr?P.shirt:P.skin),{p:[0,-.14,0]}));add('farm'+s,G(new THREE.BoxGeometry(.055*lr,.08,.045*lr),wr?'#c8c0d8':(kn?'#6c7280':P.skin),{p:[0,-.32,0]}));
-   if(kn||br)add('uarm'+s,G(new THREE.SphereGeometry(.085*lr,8,4,0,TAU,0,Math.PI/2),kn?P.shirt:'#4a3a2a',{p:[0,.02,0]}));
-   if(!wr){add('thigh'+s,G(new THREE.CylinderGeometry(.075*lr,.06*lr,.45,7),P.pants,{p:[0,-.225,0]}));add('shin'+s,G(new THREE.CylinderGeometry(.058*lr,.045*lr,.43,7),kn?'#9aa2b0':P.pants,{p:[0,-.215,0]}));add('shin'+s,G(new THREE.BoxGeometry(.085*lr,.07,.2),P.boots,{p:[0,-.43,.04]}));}}}
+ for(const s of['L','R']){
+  if(sk){add('uarm'+s,G(new THREE.CylinderGeometry(.022,.02,.3,5),P.skin,{p:[0,-.15,0]}));
+   add('farm'+s,G(new THREE.CylinderGeometry(.018,.016,.28,5),P.skin,{p:[0,-.14,0]}));add('farm'+s,G(new THREE.IcosahedronGeometry(.025,0),P.skin,{p:[0,0,0]}));
+   add('farm'+s,G(new THREE.BoxGeometry(.036,.06,.026),P.skin,{p:[0,-.31,0]}));/* hand */
+   add('farm'+s,G(new THREE.BoxGeometry(.03,.05,.014),P.skin,{p:[0,-.355,.01]}));/* finger bones */
+   add('thigh'+s,G(new THREE.CylinderGeometry(.026,.022,.45,5),P.skin,{p:[0,-.225,0]}));
+   add('shin'+s,G(new THREE.CylinderGeometry(.022,.018,.43,5),P.skin,{p:[0,-.215,0]}));add('shin'+s,G(new THREE.IcosahedronGeometry(.03,0),P.skin,{p:[0,0,0]}));
+   add('shin'+s,G(new THREE.BoxGeometry(.05,.05,.07),P.skin,{p:[0,-.41,0]}));/* ankle */
+   add('shin'+s,G(new THREE.BoxGeometry(.045,.03,.12),P.skin,{p:[0,-.44,.05]}));/* foot */}
+  else{
+   add('uarm'+s,G(new THREE.CylinderGeometry(.055*lr,.045*lr,.3,7),br?P.skin:P.shirt,{p:[0,-.15,0]}));/* brute: bare arms */
+   add('farm'+s,G(new THREE.CylinderGeometry(.045*lr,.034*lr,.28,7),kn?'#9aa2b0':(wr?P.shirt:P.skin),{p:[0,-.14,0]}));
+   for(const g of fist(kn?'#6c7280':(wr?'#c8c0d8':P.skin),.06*lr))add('farm'+s,g);
+   if(wr)for(const x of[-.02,0,.02])add('farm'+s,G(new THREE.BoxGeometry(.012,.06,.012),'#c8c0d8',{p:[x,-.4,.01]}));/* bony fingers */
+   if(ar)add('farm'+s,G(new THREE.CylinderGeometry(.05*lr,.05*lr,.1,7),'#5a3a24',{p:[0,-.1,0]}));/* bracer */
+   if(kn||br)add('uarm'+s,G(new THREE.SphereGeometry(.085*lr,8,4,0,TAU,0,Math.PI/2),kn?P.shirt:'#4a3a2a',{p:[0,.02,0]}));/* pauldron */
+   if(!wr){add('thigh'+s,G(new THREE.CylinderGeometry(.075*lr,.06*lr,.45,7),P.pants,{p:[0,-.225,0]}));
+    add('shin'+s,G(new THREE.CylinderGeometry(.058*lr,.045*lr,.43,7),kn?'#9aa2b0':P.pants,{p:[0,-.215,0]}));
+    for(const g of boot(P.boots,.085*lr,.08))add('shin'+s,g);}}}
  if(isKing){for(let i=0;i<7;i++){const a=i/7*TAU;add('head',G(new THREE.ConeGeometry(.025,.14+(i%2)*.06,4),'#bfe6ff',{p:[Math.cos(a)*.1,.32,Math.sin(a)*.1]}));}add('head',G(new THREE.TorusGeometry(.105,.018,4,12),'#9ad0f0',{p:[0,.29,0],r:[Math.PI/2,0,0]}));}
  if(boss&&kn)add('head',G(new THREE.TorusGeometry(.13,.012,4,12),'#c8a040',{p:[0,.12,0],r:[Math.PI/2,0,0]}));
  const out={};for(const k in T)out[k]=merge(T[k]);return out;}
