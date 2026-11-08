@@ -523,7 +523,7 @@ function buildGates(group,R){
   const board=new THREE.Mesh(new THREE.PlaneGeometry(2.4,.6),new THREE.MeshBasicMaterial({map:gateLabel(label),side:THREE.DoubleSide,fog:true}));board.position.set(3.8,sy+2.05,2.66);gate.add(board);
   if(sealed){const ice=new THREE.Mesh(new THREE.BoxGeometry(4.3,5,.5,4,4,1),new THREE.MeshLambertMaterial({color:'#bfe4ff',emissive:'#2a5c8c',transparent:true,opacity:.78,flatShading:true}));ice.position.set(0,2.5,0);gate.add(ice);}
   group.add(gate);colliders.push({x:x+px*2.6,z:z+pz*2.6,r:.75},{x:x-px*2.6,z:z-pz*2.6,r:.75},{x:sx,z:sz,r:.2});
-  W.gates.push({dir:rd.dir,x,z,dx:rd.dx,dz:rd.dz,target:T.id,sealed,label,obj:gate});}}
+  W.gates.push({dir:rd.dir,x,z,dx:rd.dx,dz:rd.dz,target:T.id,sealed,label,obj:gate,board});}}
 function updateGates(){
  if(state.mode!=='play'||state.traveling||player.dead)return;
  for(const g of W.gates){const t=headPos.x*g.dx+headPos.z*g.dz,lat=Math.abs(-headPos.x*g.dz+headPos.z*g.dx);
@@ -704,6 +704,7 @@ function drawWrist(){const pg=SAVE.prog,cdl=['fire','push','slow'].filter(spellK
 function attachWrist(){const h=hands[0];h.grip.add(wrist.mesh);wrist.mesh.position.set(.0,.045,.09);wrist.mesh.rotation.set(-Math.PI/2.4,0,0);if(!XR){wrist.mesh.position.set(0,.06,.02);wrist.mesh.rotation.set(-.6,0,0);}}
 /* boss bar & enemy health bars */
 const bossPanel=new Panel(1.1,.12,880,96,{order:19});bossPanel.mesh.visible=false;scene.add(bossPanel.mesh);
+function bossRefresh(){let best=null,bd=1e9;for(const e of enemies){if(e.dead||!e.boss||e.dummy)continue;const d=Math.hypot(e.pos.x-headPos.x,e.pos.z-headPos.z);if(d<bd){bd=d;best=e;}}bossPanel.mesh.visible=!!best;if(best)drawBoss(best);}
 function drawBoss(e){bossPanel.clear();bossPanel.text(e.bossName.toUpperCase(),440,38,34,'#efe6d2','Cinzel',800,'center');const g=bossPanel.g;g.fillStyle='rgba(0,0,0,.6)';g.fillRect(40,56,800,22);g.fillStyle='#b8323a';g.fillRect(40,56,800*clamp(e.hp/e.maxHp,0,1),22);g.strokeStyle='rgba(233,135,74,.8)';g.lineWidth=2;g.strokeRect(40,56,800,22);bossPanel.update();}
 /* fade/hurt overlay */
 const fadeMesh=new THREE.Mesh(new THREE.SphereGeometry(.25,16,10),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0,side:THREE.BackSide,depthTest:false,depthWrite:false,fog:false}));fadeMesh.renderOrder=999;camera.add(fadeMesh);
@@ -715,7 +716,7 @@ function fadeTo(v){fade.target=v;return new Promise(r=>setTimeout(r,v?520:50));}
 /* ---------- player damage ---------- */
 function headCaps(out1,out2){out1.copy(headPos);out1.y-=.05;out2.copy(headPos);out2.y-=.05;return .15;}
 function torsoCaps(out1,out2){out1.copy(headPos);out1.y-=.3;out2.copy(headPos);out2.y=Math.max(out2.y-.85,rig.position.y+.6);return .2;}
-function hurtPlayer(dmg,from,kind){if(player.dead||player.invuln>0||state.mode!=='play')return;dmg=PROG.hurt(dmg);if(dmg<=0)return;player.hp-=dmg;player.lastHurt=clock;player.invuln=.35;fade.hurt=Math.min(1,.4+dmg/40);sfx('hurt',null,.8);hands.forEach(h=>buzz(h,.8,90));
+function hurtPlayer(dmg,from,kind){if(player.dead||player.invuln>0||state.mode!=='play'||state.traveling)return;dmg=PROG.hurt(dmg);if(dmg<=0)return;player.hp-=dmg;player.lastHurt=clock;player.invuln=.35;fade.hurt=Math.min(1,.4+dmg/40);sfx('hurt',null,.8);hands.forEach(h=>buzz(h,.8,90));
  if(from){_v1.subVectors(headPos,from).setY(0).normalize();rig.position.addScaledVector(_v1,Math.min(.25,dmg/120));}
  if(player.hp<=0){player.hp=0;onPlayerDeath();}}
 
@@ -806,7 +807,7 @@ function release(h){
  const w=h.held;if(!w)return;h.held=null;
  if(w.hand2===h){w.hand2=null;return;}
  if(w.hand2){w.hand=w.hand2;w.gripY=w.g2;w.hand2=null;return;}
- for(let i=0;i<HOLSTERS.length;i++){if(holsterSlots[i])continue;holsterWorld(i,_v1);_v2.set(0,w.gripY,0).applyMatrix4(w.obj.matrixWorld);if(_v2.distanceTo(_v1)<.24&&XR){holster(w,i);buzz(h,.3,25);return;}}
+ for(let i=0;i<HOLSTERS.length;i++){if(holsterSlots[i])continue;holsterWorld(i,_v1);_v2.set(0,w.gripY,0).applyMatrix4(w.obj.matrixWorld);if(_v2.distanceTo(_v1)<.24&&XR){if(holster(w,i)){buzz(h,.3,25);return;}break;}}
  w.state='free';w.hand=null;w.rest=false;w.vel.copy(h.vel).multiplyScalar(w.d.throwable?1.25:1.05);w.ang.copy(w.angVel).multiplyScalar(.9);
  if(w.d.throwable&&w.vel.length()>3.5){const tgt=aimAssist(w.obj.position,w.vel,.22);if(tgt){const sp=w.vel.length();w.vel.lerp(_v1.subVectors(tgt,w.obj.position).normalize().multiplyScalar(sp),.6);w.vel.y+=.04*w.obj.position.distanceTo(tgt);}
   w.obj.quaternion.setFromUnitVectors(UP,_v2.copy(w.vel).normalize());w.ang.set(0,0,0);w.thrown=1.5;}
@@ -814,10 +815,10 @@ function release(h){
 function aimAssist(from,dir,cone){let best=null,bd=cone;_v3.copy(dir).normalize();for(const e of enemies){if(e.dead)continue;const t=e.parts[1].mid;const d=_v4.subVectors(t,from);const dist=d.length();if(dist>18)continue;const a=1-d.normalize().dot(_v3);if(a<bd){bd=a;best=t;}}return best;}
 /* holsters */
 const holsterSlots=[null,null,null,null];
-function holster(w,i){w.detach();w.state='holster';w.slot=i;w.hand=w.hand2=null;holsterSlots[i]=w;w.fresh=2;sfx('block',w.obj.position,.25,1.6);}
+function holster(w,i){if(w.loot){toast('Not yours to keep');sfx('ui',w.obj.position,.3,.5);return false;}w.detach();w.state='holster';w.slot=i;w.hand=w.hand2=null;holsterSlots[i]=w;w.fresh=2;sfx('block',w.obj.position,.25,1.6);return true;}
 function placeHolsters(){for(let i=0;i<4;i++){const w=holsterSlots[i];if(!w)continue;holsterWorld(i,_v1);const back=i>=2,side=i%2?1:-1;
  _q1.copy(bodyYawQ).multiply(_q2.setFromEuler(_e.set(back?Math.PI-.25:Math.PI+.15,0,back?side*.45:side*.12)));w.obj.quaternion.copy(_q1);_v2.set(0,w.d.hand[1]*.5,0).applyQuaternion(_q1);w.obj.position.copy(_v1).sub(_v2);if(!XR)w.obj.visible=false;else w.obj.visible=true;}}
-function drawFromHolster(h,i){const w=holsterSlots[i];if(!w)return;if(h.held){const cur=h.held;const free=holsterSlots.findIndex(s=>!s);h.held=null;cur.hand=null;if(free>=0)holster(cur,free);else{cur.state='free';}}
+function drawFromHolster(h,i){const w=holsterSlots[i];if(!w)return;if(h.held){const cur=h.held;const free=holsterSlots.findIndex(s=>!s);h.held=null;cur.hand=null;if(!(free>=0&&holster(cur,free)))cur.state='free';}
  holsterSlots[i]=null;w.obj.visible=true;w.state='held';w.hand=h;w.hand2=null;w.gripY=(w.d.hand[0]+w.d.hand[1])/2*.3;w.slot=-1;h.held=w;w.fresh=2;sfx('ui',null,.3);}
 function giveLoadout(){for(const w of [...weapons])if(w.owner==='player'&&(w.state==='free'||w.state==='rack'||w.state==='stuck'))w.remove();
  const has=id=>weapons.some(w=>w.owner==='player'&&w.id===id&&(w.state==='holster'||w.state==='held'));
@@ -1108,7 +1109,7 @@ class Enemy{
      /* backstep when the player rushes in */
      if(A.back>0&&dist<1.2&&this.backCD<=0&&this.backN<2&&!this.hasToken&&-(AI.headV.x*to.x+AI.headV.z*to.z)>1.5){this.backCD=TI.react+.3;if(Math.random()<A.back){this.backN++;this.step(-to.x,-to.z,rr(.5,.8),.3);this.st.back++;break;}}
      if(this.hasToken){move.copy(to);speed=T.speed*1.15;this.closeT+=dt;
-      if(dist<reach+.1&&clock-AI.lastAtk>.3)this.startAttack();else if(this.closeT>2.5){this.dropToken(true);this.cool=rr(.3,.8);}}
+      if(dist<reach+.1&&clock-AI.lastAtk>.3){if(this.offView()&&this.offBusy()){this.dropToken(true);this.cool=rr(.4,.9);}else this.startAttack();}else if(this.closeT>2.5){this.dropToken(true);this.cool=rr(.3,.8);}}
      else{const d=this.circle(to,hold,move);speed=Math.min(T.speed,d*1.2+.15);this.cool-=dt;
       if(this.cool<=0&&attackTokens<TI.tokens&&!player.dead){this.hasToken=true;attackTokens++;this.closeT=0;}}}
     break;}
@@ -1117,7 +1118,7 @@ class Enemy{
     if(!this.cued&&this.atkT>=this.windDur-.2){this.cued=true;sfx(this.type==='skeleton'?'rattle':'cue',this.handR,.75,this.type==='brute'?.6:this.type==='knight'?.85:this.type==='archer'?1.15:1);}
     if(this.atkT>=this.windDur){this.state='strike';this.atkT=0;this.hitDone=false;sfx('whoosh',this.handR,.7,this.T.two?.6:1);}break;}
    case 'feint':this.atkT+=dt;if(this.bash){move.copy(to);speed=1.2;}if(this.atkT>=.28)this.startAttack(this.openKey(),true);break;
-   case 'strike':{this.atkT+=dt;move.copy(to);speed=dist>reach*.7?2.2:0;if(this.atkT>=this.strikeDur){if(this.combo>0&&dist<reach+.4){this.combo--;this.atkKey=pick(T.atks.filter(k=>k!==this.atkKey));this.atk=ATK[this.atkKey];this.state='windup';this.atkT=Math.max(0,Math.min(this.windDur*.45,this.windDur-.3));this.cued=false;}else{this.state='recover';this.atkT=0;}}
+   case 'strike':{this.atkT+=dt;move.copy(to);speed=dist>reach*.7?2.2:0;if(this.atkT>=this.strikeDur){if(this.combo>0&&dist<reach+.4){this.combo--;this.atkKey=pick(T.atks.filter(k=>k!==this.atkKey));this.atk=ATK[this.atkKey];this.state='windup';this.atkT=Math.max(0,Math.min(this.windDur*.45,this.windDur-.3));this.cued=false;if(this.offView()&&this.offBusy()){this.state='recover';this.atkT=0;}else this.viewCue();}else{this.state='recover';this.atkT=0;}}
     if(this.isKing&&this.atkKey==='overhead'&&this.atkT>=this.strikeDur*.7&&!this.slammed){this.slammed=true;this.slam();}break;}
    case 'recover':this.atkT+=dt;if(this.atkT>=.45){this.state='engage';this.dropToken(false);this.cool=rr(1.1,2.6)*(this.boss?.55:1)*TI.cool*A.cool;}break;
    case 'block':this.atkT+=dt;if(this.atkT>=.6)this.state='engage';break;
@@ -1158,6 +1159,10 @@ class Enemy{
  /* attack the side the player's still guard leaves open */
  openKey(){const T=this.T,w=AI.guardW;if(!w)return pick(T.atks);const lp=_a3.subVectors(w.b,this.root.position).applyAxisAngle(UP,-this.yaw).divideScalar(this.s);
   const k=lp.y>1.4?'thrust':lp.x>0?'sideL':'sideR';return T.atks.includes(k)?k:pick(T.atks);}
+ /* out of the player's view: at most one such attacker at a time, and every windup (combo re-windups too) lasts >= 0.8 s with an alert */
+ offView(){_a1.set(this.pos.x-headPos.x,0,this.pos.z-headPos.z).normalize();return _a1.dot(headFwd)<.55;}
+ offBusy(){for(const o of enemies)if(o!==this&&!o.dead&&o.offAtk&&(o.state==='windup'||o.state==='strike'||o.state==='feint'))return true;return false;}
+ viewCue(){this.offAtk=this.offView();if(this.offAtk){this.windDur=Math.max(this.windDur,this.atkT+.8*Math.max(1,this.TI.tele));sfx('alert',this.pos,.9,this.type==='brute'?.6:1);}}
  startAttack(key,fast){const T=this.T,A=this.ai,TI=this.TI;
   const read=!fast&&!key&&AI.still>.8&&Math.hypot(headPos.x-this.pos.x,headPos.z-this.pos.z)<1.5&&Math.random()<A.read;
   this.feint=!fast&&A.feint>0&&(read||Math.random()<TI.feint*A.feint);this.bash=!fast&&!!A.bash&&Math.random()<TI.feint;if(this.bash)this.feint=true;
@@ -1165,7 +1170,7 @@ class Enemy{
   const min=HEAVY[this.atkKey]||T.two?(this.type==='brute'||this.type==='knight'?TELE.huge:TELE.heavy):TELE.light;
   this.windDur=Math.max(.35,Math.max(fast?0:T.windup*rr(.9,1.1),min)*TI.tele);
   /* attacker outside the player's view: stretch the windup and call out so they can turn */
-  _a1.set(this.pos.x-headPos.x,0,this.pos.z-headPos.z).normalize();if(_a1.dot(headFwd)<.55){this.windDur=Math.max(this.windDur,.8*Math.max(1,TI.tele));sfx('alert',this.pos,.9,this.type==='brute'?.6:1);}
+  this.viewCue();
   this.strikeDur=(T.two?.42:.3)*(this.boss&&this.type==='brute'?1.1:1);
   const mc=Math.min(TI.combo,A.combo)-1;this.combo=fast?0:mc>0&&Math.random()<A.comboP?ri(1,mc):0;if(this.boss&&!fast)this.combo=Math.max(this.combo,ri(0,1));
   this.slammed=false;this.cued=false;this.backN=0;this.closeT=0;AI.lastAtk=clock;this.st.atk++;}
@@ -1221,7 +1226,7 @@ class Enemy{
  dropWeapon(vel){const w=this.weapon;if(!w)return;w.state='free';w.owner='loot';w.enemy=null;w.vel.copy(vel||_v1.set(0,1,0)).multiplyScalar(.3);w.vel.y+=1;w.ang.set(rr(-3,3),rr(-3,3),rr(-3,3));w.rest=false;this.weapon=null;}
  die(kind,vel,part,at){
   if(this.dead)return;this.dead=true;this.dropToken(true);this.bar.visible=false;
-  if(this.boss){bossPanel.mesh.visible=false;}
+  if(this.boss)bossRefresh();
   if(this.weapon)this.dropWeapon(vel);if(this.shield){this.shield.state='free';this.shield.owner='loot';this.shield.vel.set(0,1,0);this.shield=null;}if(this.bow){scene.remove(this.bow);this.bow.geometry.dispose();this.bow=null;}
   sfx('fall',this.pos,.7);
   if(this.type==='wraith'){this.dissolve=1.2;fx.puff(this.parts[1].mid,0x3a2a50,40,1.8,5,1.4);fx.spark(this.parts[1].mid,0xc87aff,30,3,1.5);}
@@ -1275,6 +1280,10 @@ function stepGib(g,dt){const d2=-9.8*dt*dt;for(const q of g.P){const v=_v1.subVe
 function grabRagdoll(h){let best=null,bd=XR?.16:1.2;for(const rd of ragdolls)rd.P.forEach((q,i)=>{const d=q.p.distanceTo(h.pos);if(d<bd){bd=d;best={rd,i};}});
  if(!best)return false;h.part=best;best.rd.P[best.i].pin=h.pos.clone();buzz(h,.3,40);return true;}
 function releaseRagdoll(h){const q=h.part.rd.P[h.part.i];q.pin=null;q.o.copy(q.p).addScaledVector(h.vel,-1/72*1.2);h.part=null;}
+/* enemy weapons picked up mid-fight (w.loot) are borrowed: they dissolve on travel and region death and never reach SAVE.weapons */
+function clearLoot(){for(const w of [...weapons]){if(!w.loot)continue;for(const h of hands)if(h.held===w)h.held=null;if(w.slot>=0&&holsterSlots[w.slot]===w)holsterSlots[w.slot]=null;fx.puff(w.obj.position.clone(),0x8a8090,16,.8,2,.7);w.remove();}}
+/* rare drops still lying on the ground when the player leaves or falls go straight to the rack */
+function grantDrops(){for(const d of PROG.drops.splice(0)){scene.remove(d.beam);const w=d.w;if(!weapons.includes(w))continue;if(w.state==='held'||w.state==='holster'){ownWeapon(w.id);continue;}if(ownWeapon(w.id))toast(`${WDEF[w.id].name} added to your rack`);w.remove();}}
 function clearEnemies(){for(const e of enemies){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}enemies.length=0;attackTokens=0;
  for(const rd of ragdolls)for(const b of rd.binds)scene.remove(rd.N[b[0]]);ragdolls.length=0;for(const g of gibs)scene.remove(g.node);gibs.length=0;
  for(const w of [...weapons])if(w.owner!=='player'||w.state==='free'||w.state==='stuck'||w.state==='rack')if(w.state!=='held'&&w.state!=='holster')w.remove();shockwaves.length=0;}
@@ -1300,7 +1309,7 @@ const pushMesh=new THREE.Mesh(new THREE.ConeGeometry(1,1,24,1,true).translate(0,
 function handMagic(h,dt){
  const other=hands[1-h.i];
  if(h.spellShowT>0){h.spellShowT-=dt;h.icon.mesh.position.copy(h.pos).y+=.12;h.icon.mesh.lookAt(headPos);if(h.spellShowT<=0)h.icon.mesh.visible=false;}
- if(h.held||h.part||h.tk||h.uiHover){if(h.cast)endCast(h);return;}
+ if(h.held||h.part||h.tk||(h.uiHover&&!(h.uiHover===VIL&&h.cast))){if(h.cast)endCast(h);return;}
  if(XR&&(h.i?pressed(h,'b'):released(h,'b')&&!PROG.yHeld))cycleSpell(h);
  const l=spellList();if(!l.length){if(pressed(h,'trig')&&state.mode==='play'&&!state.inHubMenu)sfx('ui',h.pos,.2,.5);return;}
  const sp=l[h.spell%l.length];const palm=_v1.copy(h.aimO).addScaledVector(h.aim,.09);
@@ -1536,7 +1545,7 @@ function drawSkillPanel(){const P=skillPanel,p=SAVE.prog;P.clear();P.bg('rgba(14
    P.button(id,(own?'✓ ':'')+s.name,x,y,390,104,{active:own,disabled:!own&&!can,size:28,sub});
    if(i<4){g.fillStyle='rgba(233,135,74,.5)';g.fillRect(x+192,y+104,6,14);}});});
  P.button('close','Close',440,808,400,62,{size:28});P.text(XR?'Hold Y to close':'K to close',1220,850,22,'#6a6276','Alegreya Sans',500,'right');P.update();
- PROG.panelKey=[p.level,p.xp,p.gold,p.points,p.skills.length].join();}
+ PROG.pk=[p.level,p.xp,p.gold,p.points,p.skills.length];}
 function onSkillPanel(id){if(id==='close'){closeSkillPanel();return;}if(!PROG.learn(id))sfx('ui',null,.3,.5);drawSkillPanel();}
 skillPanel.redraw=drawSkillPanel;skillPanel.onClick=onSkillPanel;
 function openSkillPanel(){const m=skillPanel.mesh;_v1.copy(headFwd).multiplyScalar(1.2).add(headPos);m.position.set(_v1.x,headPos.y-.1,_v1.z);m.lookAt(headPos);skillPanel.hover=null;drawSkillPanel();scene.add(m);m.visible=true;sfx('ui',null,.5);}
@@ -1545,7 +1554,7 @@ function toggleSkillPanel(){if(skillPanel.mesh.visible)closeSkillPanel();else op
 addEventListener('keydown',e=>{if(!XR&&state.mode==='play'&&e.code==='KeyK')toggleSkillPanel();});
 function updateProgression(dt){
  const L=hands[0];if(XR){if(pressed(L,'b')){PROG.yT=0;PROG.yHeld=false;}if(L.b.b&&!PROG.yHeld){PROG.yT+=dt;if(PROG.yT>=.6){PROG.yHeld=true;toggleSkillPanel();buzz(L,.5,60);}}}
- if(skillPanel.mesh.visible){if(state.mode!=='play'||skillPanel.mesh.position.distanceTo(headPos)>3.2)closeSkillPanel();else{const p=SAVE.prog;if([p.level,p.xp,p.gold,p.points,p.skills.length].join()!==PROG.panelKey)drawSkillPanel();}}
+ if(skillPanel.mesh.visible){if(state.mode!=='play'||skillPanel.mesh.position.distanceTo(headPos)>3.2)closeSkillPanel();else{const p=SAVE.prog;const k=PROG.pk||[];if(k[0]!==p.level||k[1]!==p.xp||k[2]!==p.gold||k[3]!==p.points||k[4]!==p.skills.length)drawSkillPanel();}}
  if(lvlT>0){lvlT-=dt;const a=3.5-lvlT;lvlPanel.mesh.material.opacity=clamp(Math.min(lvlT,a*4),0,1);lvlPanel.mesh.scale.setScalar(1+.2*Math.max(0,1-a*3));if(lvlT<=0)lvlPanel.mesh.visible=false;}
  if(PROG.toastT>0)PROG.toastT-=dt;
  for(let i=PROG.drops.length-1;i>=0;i--){const d=PROG.drops[i],w=d.w,gone=!weapons.includes(w);
@@ -2527,6 +2536,8 @@ SAVE.main=SAVE.main||[];SAVE.quests=SAVE.quests||{active:{},done:[]};
 if(!SAVE.mainMig){if(!SAVE.main.length&&SAVE.done>0)SAVE.main=STORY2.main.slice(0,[0,1,3,5,6,8,10][Math.min(6,SAVE.done)]).map(m=>m.id);SAVE.mainMig=true;}SAVE.done=SAVE.main.length;
 PROG.sharpMul=id=>(SAVE.prog.sharp&&SAVE.prog.sharp[id])||1;
 const NPC_AT={},SQ_AT={};for(const n of STORY2.npcs)NPC_AT[n.id]=n;for(const q of STORY2.sidequests)SQ_AT[q.id]=q;
+/* drop quest ids this build does not know (old or edited saves); accept times restart with the game clock */
+{const s=SAVE.quests;if(!s.active||typeof s.active!=='object')s.active={};if(!Array.isArray(s.done))s.done=[];for(const id in s.active){const a=s.active[id];if(!SQ_AT[id]||!a||typeof a!=='object')delete s.active[id];else a.t=0;}s.done=s.done.filter(id=>SQ_AT[id]);if(s.track&&!s.active[s.track])delete s.track;}
 const VROLE={lamplighter:{hair:'swept',prop:'lamp',old:1},blacksmith:{hair:'crop',bulk:1.16,prop:'hammer',kind:'smith'},merchant:{hair:'short',belly:1,satchel:1,kind:'shop'},
  innkeeper:{hair:'bun',dress:1},priest:{hair:'bald',robe:1,pendant:1},child:{hair:'tufts',scale:.68,speed:1.35},farmer:{hair:'short',straw:1},guard:{hair:'crop',prop:'spear',tabard:1,kind:'guard'},
  weaver:{hair:'long',dress:1},gravedigger:{hair:'shaggy',prop:'shovel',hunch:.14},herbalist:{hair:'bun',dress:1,hunch:.2,prop:'stick',old:1},ferrywoman:{hair:'long',dress:1,prop:'pole',kind:'stay'},
@@ -2647,6 +2658,9 @@ function spawnVillagers(rid){if(VIL.group&&VIL.region===rid&&npc&&npc.root===VIL
    headY:0,headX:0,lookY:0,lookT:0,bark:[],barkCD:rr(0,4),partner:null,face:false,walkT:0,afterShown:null,talkT:0,mark:null,markK:''};
   if(kind==='guard'){const rd=W.roads.find(r=>r.dir==='N')||W.roads[0];v.patrol=[11,22].map(t=>{roadPt(rd,t,_vv);return new V3(_vv.x+rd.dz*-1.8,0,_vv.z+rd.dx*1.8);});v.pos.copy(v.patrol[0]);}
   VIL.list.push(v);vPlace(v);});
+ /* steering only needs the colliders around where villagers walk: their box (homes, posts, points of interest) plus a margin */
+ {let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;const ad=(x,z)=>{x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);};for(const v of VIL.list){ad(v.pos.x,v.pos.z);ad(v.home.x,v.home.z);if(v.patrol)v.patrol.forEach(q=>ad(q.x,q.z));if(v.kind==='smith')ad(-5,-2.6);}for(const p of VIL.poi)ad(p[0],p[1]);
+  const m=4;VIL.cols=colliders.filter(c=>c.x+c.r>x0-m&&c.x-c.r<x1+m&&c.z+c.r>z0-m&&c.z-c.r<z1+m);}
  VIL.markT=0;}
 function vPlace(v){v.root.position.set(v.pos.x,floorY(v.pos.x,v.pos.z),v.pos.z);v.root.rotation.y=v.yaw;}
 function vGo(v,x,z){v.tgt.set(x,0,z);v.st='walk';v.walkT=0;}
@@ -2662,11 +2676,11 @@ function vTurn(v,want,dt,k=4){v.yaw+=wrapA(want-v.yaw)*Math.min(1,dt*k);}
 function vStep(v,dt){const p=v.pos,dx=v.tgt.x-p.x,dz=v.tgt.z-p.z,d=Math.hypot(dx,dz);v.walkT+=dt;
  if(d<.35||v.walkT>25){if(v.partner&&d<.35){const u=v.partner;v.st=u.st='chat';v.t=u.t=rr(6,11);}else if(v.after){v.st=v.after;v.after=null;v.t=rr(8,16);}else{v.st='idle';v.t=rr(1.5,5);if(v.partner){v.partner.partner=null;v.partner.st='idle';v.partner=null;}}return;}
  let ax=dx/d,az=dz/d;
- for(const c of colliders){const ox=p.x-c.x,oz=p.z-c.z;if(Math.abs(ox)>c.r+1.4||Math.abs(oz)>c.r+1.4)continue;const cd=Math.hypot(ox,oz)||1e-3,rad=c.r+.4;if(cd>rad+.9)continue;
+ for(const c of VIL.cols||colliders){const ox=p.x-c.x,oz=p.z-c.z;if(Math.abs(ox)>c.r+1.4||Math.abs(oz)>c.r+1.4)continue;const cd=Math.hypot(ox,oz)||1e-3,rad=c.r+.4;if(cd>rad+.9)continue;
   const k=(rad+.9-cd)/.9,nx=ox/cd,nz=oz/cd,side=(ax*-nz+az*nx)>=0?1:-1;ax+=nx*k*.8+(-nz*side)*k*1.3;az+=nz*k*.8+(nx*side)*k*1.3;}
  for(const u of VIL.list){if(u===v||u===v.partner)continue;const ox=p.x-u.pos.x,oz=p.z-u.pos.z,cd=Math.hypot(ox,oz);if(cd<.9&&cd>1e-3){ax+=ox/cd*(.9-cd)*2;az+=oz/cd*(.9-cd)*2;}}
  vTurn(v,Math.atan2(ax,az),dt,5);const sp=v.sp*Math.max(.3,Math.cos(wrapA(Math.atan2(ax,az)-v.yaw)));p.x+=Math.sin(v.yaw)*sp*dt;p.z+=Math.cos(v.yaw)*sp*dt;
- for(const c of colliders){const ox=p.x-c.x,oz=p.z-c.z,cd=Math.hypot(ox,oz),rad=c.r+.32;if(cd<rad&&cd>1e-3){p.x=c.x+ox/cd*rad;p.z=c.z+oz/cd*rad;}}}
+ for(const c of VIL.cols||colliders){const ox=p.x-c.x,oz=p.z-c.z,cd=Math.hypot(ox,oz),rad=c.r+.32;if(cd<rad&&cd>1e-3){p.x=c.x+ox/cd*rad;p.z=c.z+oz/cd*rad;}}}
 function vAnim(v,dt,walking){const N=v.N,L=v.L;v.mv=lerp(v.mv,walking?1:0,Math.min(1,dt*6));const mv=v.mv;v.walk+=dt*v.sp*5.6;const ph=v.walk;const hold=!!L.prop&&L.prop!=='hammer';
  for(const[sd,o]of[['L',0],['R',Math.PI]]){N['thigh'+sd].rotation.x=Math.sin(ph+o)*.5*mv;N['shin'+sd].rotation.x=Math.max(0,Math.sin(ph+o+1.4))*.8*mv+.04;
   N['uarm'+sd].rotation.set(-Math.sin(ph+o)*.42*mv+.02,0,(sd==='L'?-1:1)*(.07+Math.sin(clock*1.1+v.walk*.1)*.01));N['farm'+sd].rotation.set(-.12-.28*mv,0,0);}
@@ -2698,14 +2712,14 @@ const QS=()=>SAVE.quests;
 function qAvail(q){const s=QS();return !s.done.includes(q.id)&&!s.active[q.id]&&(!q.requires||s.done.includes(q.requires))&&SAVE.prog.level>=q.minLevel-2;}
 function qCamps(rid){const c=regionState[rid]&&regionState[rid].camps;return Array.isArray(c)&&c.length?c:null;}
 function qReady(q){const a=QS().active[q.id];if(!a)return false;const P=q.params;
- if(q.type==='kill')return a.n>=P.count;if(q.type==='fetch')return !!a.got;if(q.type==='boss')return !!a.killed;if(q.type==='clear'){const c=qCamps(P.region);return c?c.every(x=>x&&x.cleared):a.n>=10;}return false;}
+ if(q.type==='kill')return a.n>=P.count;if(q.type==='fetch')return !!a.got;if(q.type==='boss')return !!a.killed;if(q.type==='clear'){const c=qCamps(P.region),t0=a.t||0;return c?c.every(x=>x&&x.cleared&&x.t>=t0):a.n>=10;}return false;}
 const vName=id=>(NPC_AT[id]||{}).name||id,rName=id=>id==='any'?'anywhere':(REGION_AT[id]||{}).name||id;
 function qText(q){const a=QS().active[q.id]||{},P=q.params;if(q.type==='deliver')return `bring ${P.item} to ${vName(P.to)}`;if(qReady(q))return `return to ${vName(q.giver)}`;
  if(q.type==='kill')return `${a.n||0}/${P.count} ${P.enemy}s`;if(q.type==='fetch')return `find it in ${rName(P.region)}`;if(q.type==='boss')return `${P.boss.name}, ${rName(P.region)}`;
- const c=qCamps(P.region);return c?`camps ${c.filter(x=>x&&x.cleared).length}/${c.length}`:`${a.n||0}/10 foes, ${rName(P.region)}`;}
+ const c=qCamps(P.region);return c?`camps ${c.filter(x=>x&&x.cleared&&x.t>=(a.t||0)).length}/${c.length}`:`${a.n||0}/10 foes, ${rName(P.region)}`;}
 function qTracked(){const ids=Object.keys(QS().active);const t=QS().track;return SQ_AT[ids.includes(t)?t:ids[ids.length-1]]||null;}
 function questLine(){const q=qTracked();return q?`${q.title}: ${qText(q)}`:'';}
-function acceptQuest(id){const q=SQ_AT[id];if(!q||!qAvail(q))return false;QS().active[id]={n:0};QS().track=id;save();toast(`Quest: ${q.title}`);sfx('ui',null,.6);VIL.markT=0;
+function acceptQuest(id){const q=SQ_AT[id];if(!q||!qAvail(q))return false;QS().active[id]={n:0,t:clock};QS().track=id;save();toast(`Quest: ${q.title}`);sfx('ui',null,.6);VIL.markT=0;
  if(state.region!==HUB_ID&&!state.traveling)questOnRegion(REGION_AT[state.region]);return true;}
 function turnInQuest(id){const q=SQ_AT[id],s=QS();if(!q||!s.active[id])return false;delete s.active[id];if(!s.done.includes(id))s.done.push(id);grantReward(q.reward);toast(`Quest complete: ${q.title}`);sfx('reward',null,.7);VIL.markT=0;save();return true;}
 function questOnKill(e){if(!e||e.dummy)return;const s=QS();let any=false;
@@ -2716,8 +2730,8 @@ function questOnKill(e){if(!e||e.dummy)return;const s=QS();let any=false;
   if(ch&&!was&&qReady(q))toast(`${q.title}: return to ${vName(q.giver)}`);else if(ch)toast(`${q.title}: ${qText(q)}`);any=any||ch;}
  if(any){save();VIL.markT=0;}}
 /* called after a region is built: out-of-town villagers, fetch pickups, side-quest bosses */
-function questOnRegion(R){if(!R)return;if(!R.hub||!VIL.group||VIL.region!==R.id)spawnVillagers(R.id);const s=QS();
- for(const id in s.active){const q=SQ_AT[id],a=s.active[id],P=q.params;if(P.region!==R.id)continue;
+function questOnRegion(R,keepVil){if(!R)return;if(!keepVil&&(!R.hub||!VIL.group||VIL.region!==R.id))spawnVillagers(R.id);const s=QS();
+ for(const id in s.active){const q=SQ_AT[id],a=s.active[id];if(!q)continue;const P=q.params;if(P.region!==R.id)continue;
   if(q.type==='fetch'&&!a.got&&!VIL.pickups.some(p=>p.q===id)){const pos=vilSpot(id,11,17,4);pos.y=floorY(pos.x,pos.z);const g=new THREE.Group();g.position.copy(pos);
    const it=new THREE.Mesh(merge([G(new THREE.OctahedronGeometry(.11,0),'#ffd27a',{}),G(new THREE.TorusGeometry(.14,.015,3,12),'#fff0b0',{r:[Math.PI/2,0,0]})]),MAT_GLOW);it.position.y=.9;g.add(it);
    const beam=new THREE.Mesh(beamGeo,beamMat);beam.position.y=1.6;beam.renderOrder=5;g.add(beam);VIL.group.add(g);VIL.pickups.push({q:id,g,it,pos});}
@@ -2734,7 +2748,7 @@ function vDlgClose(){VD.v=null;VDLG.mesh.visible=false;if(VDLG.mesh.parent)scene
 function vDlgOpen(v){VD.v=v;VD.msg='';const r=v.root.position;_vv.subVectors(headPos,r).setY(0).normalize();VDLG.mesh.position.set(r.x+_vv.x*.55,headPos.y-.28,r.z+_vv.z*.55);
  VDLG.mesh.lookAt(headPos.x,headPos.y-.28,headPos.z);if(!VDLG.mesh.parent)scene.add(VDLG.mesh);VDLG.mesh.visible=true;drawDlg();}
 function vLines(v,lines,end,q,spk){Object.assign(VD,{mode:'lines',lines:[].concat(lines),i:0,end,q,spk:spk||v.d.name});vDlgOpen(v);}
-function vTurnInFor(v){const s=QS();for(const id in s.active){const q=SQ_AT[id];if(q.type==='deliver'?q.params.to===v.d.id:q.giver===v.d.id&&qReady(q))return q;}return null;}
+function vTurnInFor(v){const s=QS();for(const id in s.active){const q=SQ_AT[id];if(!q)continue;if(q.type==='deliver'?q.params.to===v.d.id:q.giver===v.d.id&&qReady(q))return q;}return null;}
 function vOfferFor(v){return STORY2.sidequests.find(q=>q.giver===v.d.id&&qAvail(q))||null;}
 function talkTo(v){if(typeof v==='string')v=VIL.list.find(u=>u.d.id===v);if(!v)return false;v.face=true;v.talkT=clock;
   const mm=mainTalkFor(v);if(mm){vLines(v,mm.doneLines,'main',mm,mainSpk(mm.doneSpeaker==null?v.d.id:mm.doneSpeaker));return true;}
@@ -2860,7 +2874,7 @@ function setupHub(){
 /* travelTo(id, fromDir): fromDir is the side of the target region the player arrives on (null = centre). opt.setup runs after the build, opt.arrive after the fade-in. */
 async function travelTo(id,fromDir,opt={}){
  const R=REGION_AT[id];if(!R||state.traveling)return false;
- state.traveling=true;
+ state.traveling=true;clearLoot();grantDrops();
  try{
   await fadeTo(1);state.mode='loading';drawLoading(R);loadPanel.mesh.visible=true;const t0=performance.now();await sleep(40);
   clearEnemies();clearProjectiles();fx.clear();endPanel.mesh.visible=false;if(endPanel.mesh.parent)scene.remove(endPanel.mesh);bossPanel.mesh.visible=false;
@@ -2877,7 +2891,7 @@ async function travelTo(id,fromDir,opt={}){
   loadPanel.mesh.visible=false;state.mode='play';fadeTo(0);
   const rs=regionState[id],first=!rs.visited;rs.visited=true;
   if(opt.arrive)opt.arrive(R,first);else regionArrive(R,first);
- }finally{state.traveling=false;}
+ }catch(err){console.warn('travelTo failed',err);loadPanel.mesh.visible=false;state.mode='play';player.dead=false;fadeTo(0);return false;}finally{state.traveling=false;}
  mainCheck();return true;}
 
 /* ---------- hub ---------- */
@@ -2887,10 +2901,10 @@ async function enterHub(rebuild){
 
 /* set dressing per biome for the story regions (REGIONS[].chapter marks them; buildWorld reads it) */
 const CH_DRESS={forest:'forest',swamp:'swamp',snow:'snow',castle:'castle',waste:'waste',meadow:'siege'};
-function liveCount(){return enemies.filter(e=>!e.dead&&!e.dummy).length;}
+function liveCount(){let n=0;for(const e of enemies)if(!e.dead&&!e.dummy)n++;return n;}
 function onEnemyDeath(e){if(!e.dummy){grantKillXP(e);questOnKill(e);}if(e.mainBoss)mainBossDead(e);}
-async function onPlayerDeath(){player.dead=true;player.slow=false;fade.target=.85;say(pick(STORY2.deathLines),'');hands.forEach(h=>{if(h.cast)endCast(h);});
- await new Promise(r=>setTimeout(r,3200));if(state.inHub){player.dead=false;player.hp=player.maxHp;fadeTo(0);return;}
+async function onPlayerDeath(){const reg=state.region;player.dead=true;player.slow=false;fade.target=.85;say(pick(STORY2.deathLines),'');hands.forEach(h=>{if(h.cast)endCast(h);});
+ await new Promise(r=>setTimeout(r,3200));if(state.region!==reg||!player.dead||state.traveling)return;if(state.inHub){player.dead=false;player.hp=player.maxHp;fadeTo(0);return;}
  state.deaths++;regionRespawn();}
 
 /* ============================== MAIN QUEST: STORY2.main runs through the open world ==============================
@@ -2926,8 +2940,8 @@ function mainComplete(m,silent){if(!m||mainDone(m.id))return false;SAVE.main.pus
  if(actEnd&&next)extra.push(`That is the end of ${mainAct(m)}. A skill point is yours; ${XR?'hold Y':'press K'} to spend it.`);if(extra.length)mainSay(extra,undefined,.5);
  if(m.unlocks)mainUnlock(m.unlocks);
  if(next)mainStart(next,3);else mainEnding();return true;}
-/* thaw the gates of the current region that lead into the unlocked one (the signpost text refreshes on the next visit) */
-function mainUnlock(id){for(const g of W.gates||[])if(g.target===id&&g.sealed){g.sealed=false;for(const c of g.obj.children.slice())if(c.material&&c.material.transparent&&c.material.emissive)g.obj.remove(c);}
+/* thaw the gates of the current region that lead into the unlocked one and relabel their signposts */
+function mainUnlock(id){for(const g of W.gates||[])if(g.target===id&&g.sealed){g.sealed=false;if(g.board){const T=REGION_AT[g.target];g.label=`\u2192 ${T.name} \u00b7 ${T.tier?'Danger '+T.tier:'Safe'}`;g.board.material.map.dispose();g.board.material.map=gateLabel(g.label);g.board.material.needsUpdate=true;}for(const c of g.obj.children.slice())if(c.material&&c.material.transparent&&c.material.emissive)g.obj.remove(c);}
  mainSay([`The ice over the road to ${REGION_AT[id].name} is cracking. The way is open.`],'',.5);}
 function mainEnding(){setMusic('end');mainSay(STORY2.ending,'',4,showEnd);}
 function mainReset(){SAVE.main=[];SAVE.done=0;SAVE.seenIntro=false;MQ.pend.length=0;MQ.boss=null;narrQ.length=0;save();}
@@ -3002,8 +3016,8 @@ function onCampCleared(R,c){const cs=regionState[R.id].camps;
 function updateCamps(dt){
  if(state.mode!=='play'||state.inHub||state.traveling||player.dead)return;
  const R=REGION_AT[state.region],cs=regionState[state.region]?.camps;if(!R||!cs)return;
- cs.forEach((c,i)=>{const rt=campRT[i];if(!rt||c.cleared)return;
-  if(!rt.es){if(Math.hypot(headPos.x-c.x,headPos.z-c.z)<CAMP.wake&&liveCount()+c.members.length<=CAMP.cap)spawnCamp(c,rt);return;}
+ let lc=liveCount();cs.forEach((c,i)=>{const rt=campRT[i];if(!rt||c.cleared)return;
+  if(!rt.es){if(Math.hypot(headPos.x-c.x,headPos.z-c.z)<CAMP.wake&&lc+c.members.length<=CAMP.cap){spawnCamp(c,rt);lc+=c.members.length;}return;}
   if(rt.es.every(e=>e.dead)){c.cleared=true;c.t=clock;rt.es=null;onCampCleared(R,c);}});
  if(R.tier>=1){patrolT-=dt;if(patrolT<=0){patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);spawnPatrol(R);}}}
 /* ambient patrol: a pair of the tier's enemies comes up a road from a gate the player is not standing at */
@@ -3013,13 +3027,14 @@ function spawnPatrol(R){if(liveCount()+2>CAMP.cap)return false;
  [pick(pool.filter(t=>!RANGED(t))),pick(pool)].forEach((t,j)=>{roadPt(rd,GATE_R-5-j*1.8,_v1);const s=j?1:-1;const e=new Enemy(t,new V3(_v1.x-rd.dz*s*.9,0,_v1.z+rd.dx*s*.9),null);e.patrol=true;});
  roadPt(rd,GATE_R-5,_v1);sfx('spawn',_v1.clone().setY(groundY(_v1.x,_v1.z)),.6);if(!narrCur&&!narrQ.length)say('Boots on the road. Someone is coming.');return true;}
 /* death in an open-world region: wake at the arrival gate, camps reset, lose a tenth of the purse */
-function regionRespawn(){
+function regionRespawn(){grantDrops();clearLoot();
  for(const e of [...enemies]){if(!e.dead){if(e.hasToken)attackTokens--;e.cleanup();if(e.weapon)e.weapon.remove();if(e.shield)e.shield.remove();}}for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].dead)enemies.splice(i,1);
  clearProjectiles();bossPanel.mesh.visible=false;campRT.forEach(rt=>{if(rt)rt.es=null;});if(MQ.boss)MQ.boss.e=null;patrolT=rr(CAMP.patrol[0],CAMP.patrol[1]);
  const rd=state.arriveDir&&W.roads.find(r=>r.dir===state.arriveDir);if(rd){roadPt(rd,GATE_R-4,_v1);teleportRig(_v1.x,_v1.z,Math.atan2(_v1.x,_v1.z));}else teleportRig(0,7,0);
  const p=SAVE.prog,lost=Math.floor((p.gold||0)*.1);p.gold-=lost;save();
  player.hp=player.maxHp;player.mana=player.maxMana;player.focus=100;player.dead=false;fadeTo(0);
- say(lost?`You wake by the road, ${lost} gold lighter. Whatever you fought has crept back to its fire.`:'You wake by the road. Whatever you fought has crept back to its fire.');}
+ say(lost?`You wake by the road, ${lost} gold lighter. Whatever you fought has crept back to its fire.`:'You wake by the road. Whatever you fought has crept back to its fire.');
+ giveLoadout();questOnRegion(REGION_AT[state.region],true);}
 /* story hook: default arrival line for travel without opt.arrive */
 function regionArrive(R,first){const T=STORY2.regions[R.id];if(T)say(first?T.enterFirst:[pick(T.enter)]);else if(first)say(R.desc);if(R.hub)return;
  say(`${R.name}. Danger ${R.tier}. Recommended level ${R.tier*4-2}.`);
@@ -3059,8 +3074,9 @@ addEventListener('keydown',e=>{if(!XR&&state.mode==='play'&&e.code==='KeyM')togg
 /* ============================== UI INTERACTION ============================== */
 function uiInteract(){
  for(const h of hands){h.uiHover=null;if(!XR&&h.i===0)continue;
-  let o,d;if(XR){if(h.held||h.tk||h.part){if(!h.tk)h.laser.visible=false;h.dot.visible=false;continue;}o=h.aimO;d=h.aim;}else{o=headPos;d=camera.getWorldDirection(_v6).clone();}
-  const hit=panelRay(o,d);
+  let o,d;if(XR){const w=h.held;if(h.tk||h.part||(w&&(w.hand2||h.vel.length()>1.5))){if(!h.tk)h.laser.visible=false;h.dot.visible=false;continue;}o=h.aimO;d=h.aim;}else{o=headPos;d=camera.getWorldDirection(_v6).clone();}
+  /* a hand holding a one-handed weapon still slowly can click an interactive panel within 2.5 m (never villagers) */
+  const hit0=panelRay(o,d),hit=hit0&&(!XR||!h.held||o.distanceTo(hit0.point)<=2.5)?hit0:null;if(XR&&h.held&&!hit){h.laser.visible=false;h.dot.visible=false;continue;}
   if(hit){const id=hit.panel.hit(hit.uv);if(hit.panel.hover!==id){hit.panel.hover=id;if(hit.panel===menu)drawMenu();else if(hit.panel.redraw)hit.panel.redraw();}h.uiHover=hit.panel;
    if(XR){h.laser.visible=true;h.laser.scale.set(1,1,o.distanceTo(hit.point));h.dot.visible=true;h.dot.position.copy(hit.point);}
    const click=XR?pressed(h,'trig'):deskClick;if(click&&id){buzz(h,.3,30);if(hit.panel.onClick)hit.panel.onClick(id);else onMenu(id);}}
@@ -3092,7 +3108,7 @@ function frame(){
  updateNarr(dt);hudT-=dt;if(hudT<=0){hudT=.1;drawWrist();}
  if(bossPanel.mesh.visible){bossPanel.mesh.position.copy(narrPos).y+=.34;bossPanel.mesh.lookAt(headPos.x,bossPanel.mesh.position.y,headPos.z);}
  updateFade(dt);updateListener();
- if(!XR){const hd=$('#hudD');hd.textContent=`Lv ${SAVE.prog.level}  XP ${SAVE.prog.xp}/${PROG.need(SAVE.prog.level)}  Gold ${SAVE.prog.gold}${SAVE.prog.points?`  (${SAVE.prog.points} skill pts: K)`:''}   HP ${Math.ceil(player.hp)}/${player.maxHp}   MP ${Math.floor(player.mana)}${spellKnown('slow')?`   TIME ${Math.floor(player.focus)}`:''}   ${spellList().length?'Spell: '+SPELLS[spellList()[hands[0].spell%spellList().length]].name:''}${PROG.cdText()}${PROG.toastT>0?'   '+PROG.toast:''}`;}
+ if(!XR){const hd=$('#hudD'),sl=spellList();hd.textContent=`Lv ${SAVE.prog.level}  XP ${SAVE.prog.xp}/${PROG.need(SAVE.prog.level)}  Gold ${SAVE.prog.gold}${SAVE.prog.points?`  (${SAVE.prog.points} skill pts: K)`:''}   HP ${Math.ceil(player.hp)}/${player.maxHp}   MP ${Math.floor(player.mana)}${spellKnown('slow')?`   TIME ${Math.floor(player.focus)}`:''}   ${sl.length?'Spell: '+SPELLS[sl[hands[0].spell%sl.length]].name:''}${PROG.cdText()}${PROG.toastT>0?'   '+PROG.toast:''}`;}
  if(!(window.HM&&HM.noRender))renderer.render(scene,camera);}
 renderer.setAnimationLoop(frame);
 
@@ -3118,7 +3134,7 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
 window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,enterHub,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
 Object.assign(window.HM,{PROG,SKILLS,SPELLS,grantKillXP,grantReward,buyWeapon,rollDrop,spellKnown,spellList,openSkillPanel,closeSkillPanel,toggleSkillPanel,skillPanel,explode});
 Object.assign(window.HM,{VIL,VD,VDLG,VBUB,STORY2,SQ_AT,spawnVillagers,updateVillagers,talkTo,vDlgClick,acceptQuest,turnInQuest,qReady,qAvail,questLine,questOnKill,questOnRegion,sharpenHeld,colliders:()=>colliders,teleportRig});
-Object.assign(window.HM,{CAMP,genCamps,setupCamps,updateCamps,spawnPatrol,regionRespawn,regionArrive,onPlayerDeath,toggleMap,mapPanel,menu,drawMenu,bossPanel,liveCount,roadD,REGION_AT,HUB_ID,teleportRig,clockNow:()=>clock,MQ,MAIN,mainCur,mainLine,mainComplete,mainReset,mainFlush,mainCheck,regionSealed,endPanel,showEnd,patrol:{get t(){return patrolT;},set t(v){patrolT=v;}}});
+Object.assign(window.HM,{loadPanel,fadeTo,clearLoot,grantDrops,bossRefresh,hurtPlayer,tryGrab,holster,holsterSlots,CAMP,genCamps,setupCamps,updateCamps,spawnPatrol,regionRespawn,regionArrive,onPlayerDeath,toggleMap,mapPanel,menu,drawMenu,bossPanel,liveCount,roadD,REGION_AT,HUB_ID,teleportRig,clockNow:()=>clock,MQ,MAIN,mainCur,mainLine,mainComplete,mainReset,mainFlush,mainCheck,regionSealed,endPanel,showEnd,patrol:{get t(){return patrolT;},set t(v){patrolT=v;}}});
 
 </script>
 </body>
