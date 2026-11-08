@@ -153,7 +153,7 @@ function audioInit(){
 async function loadAudio(name){for(const ext of ['ogg','mp3','wav']){try{const r=await fetch(`audio/${name}.${ext}`);if(!r.ok)continue;const ab=await r.arrayBuffer();AU.buf[name]=await AU.ctx.decodeAudioData(ab);if(name.startsWith('music')||name.startsWith('amb'))setMusic(AU.musKey,true);return;}catch(e){}}}
 function panner(pos){const c=AU.ctx;if(!pos)return AU.sfx;const p=c.createPanner();p.panningModel='HRTF';p.distanceModel='inverse';p.refDistance=1.2;p.rolloffFactor=1.1;p.positionX.value=pos.x;p.positionY.value=pos.y;p.positionZ.value=pos.z;p.connect(AU.sfx);return p;}
 function env(g,t,a,peak,dec){g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec);}
-function noiseSrc(t,dur,type,freq,q,out,peak,dec,f2){const c=AU.ctx,s=c.createBufferSource();s.buffer=AU.noise;s.playbackRate.value=rr(.8,1.2);const f=c.createBiquadFilter();f.type=type;f.frequency.setValueAtTime(freq,t);if(f2)f.frequency.exponentialRampToValueAtTime(f2,t+dur);f.Q.value=q;const g=c.createGain();env(g,t,.004,peak,dec);s.connect(f).connect(g).connect(out);s.start(t,rr(0,1.5));s.stop(t+dur+.05);}
+function noiseSrc(t,dur,type,freq,q,out,peak,dec,f2){const c=AU.ctx,s=c.createBufferSource();s.buffer=AU.noise;s.loop=true;s.playbackRate.value=rr(.8,1.2);const f=c.createBiquadFilter();f.type=type;f.frequency.setValueAtTime(freq,t);if(f2)f.frequency.exponentialRampToValueAtTime(f2,t+dur);f.Q.value=q;const g=c.createGain();env(g,t,.004,peak,dec);s.connect(f).connect(g).connect(out);s.start(t,rr(0,1.5));s.stop(t+dur+.05);}
 function osc(t,type,f0,f1,dur,out,peak,a=.004){const c=AU.ctx,o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);if(f1)o.frequency.exponentialRampToValueAtTime(f1,t+dur);env(g,t,a,peak,dur);o.connect(g).connect(out);o.start(t);o.stop(t+dur+a+.05);}
 /* formant voice: sawtooth through parallel bandpass formants, pitch contour f0>f1>f2 with vibrato (shouts, grunts, roars, wails) */
 function voice(t,f0,f1,f2,dur,out,peak,fm,q=6,type='sawtooth',vib=.03){const c=AU.ctx,o=c.createOscillator(),g=c.createGain(),l=c.createOscillator(),lg=c.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.linearRampToValueAtTime(f1,t+dur*.35);o.frequency.exponentialRampToValueAtTime(f2,t+dur);
@@ -218,13 +218,13 @@ function setMusic(key,force){
 }
 function musicTick(){
  const c=AU.ctx;if(!c||c.state!=='running')return;const B=AU.biome;if(!B)return;
+ windBed(c,B);
  const fileMusic=AU.cur.mus&&AU.cur.mus.file;
  const mk=AU.musKey,combat=mk==='combat'||mk==='boss';
  const bpm=combat?(mk==='boss'?132:118):B.bpm,beat=60/bpm;
  if(AU.nextNote<c.currentTime)AU.nextNote=c.currentTime+.05;
  while(AU.nextNote<c.currentTime+.25){
   const t=AU.nextNote,st=AU.step,sc=SCALES[B.scale],root=B.root;
-  if(!AU.cur.amb&&st%32===0){const g=c.createGain();g.connect(AU.amb);noiseSrc(t,beat*32,'bandpass',B.windF,.6,g,.25,beat*32,B.windF*1.6);}
   if(!fileMusic){
    const out=AU.mus,bar=Math.floor(st/16)%4,deg=B.prog[bar];
    if(st%16===0){[0,2,4].forEach((iv,k)=>{const n=root-12+sc[(deg+iv)%7]+12*Math.floor((deg+iv)/7);const o=c.createOscillator(),o2=c.createOscillator(),f=c.createBiquadFilter(),g=c.createGain();o.type='sawtooth';o2.type='sawtooth';o.frequency.value=mtof(n);o2.frequency.value=mtof(n)*1.006;f.type='lowpass';f.frequency.value=combat?900:600;f.Q.value=.7;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.05,t+beat*3);g.gain.linearRampToValueAtTime(.04,t+beat*14);g.gain.linearRampToValueAtTime(0,t+beat*16.5);o.connect(f);o2.connect(f);f.connect(g).connect(out);o.start(t);o2.start(t);o.stop(t+beat*17);o2.stop(t+beat*17);});
@@ -234,6 +234,11 @@ function musicTick(){
   }else if(combat&&!AU.buf.music_combat&&st%4===0)osc(t,'sine',140,42,.22,AU.mus,.4);
   AU.step++;AU.nextNote+=beat/4;
  }}
+/* continuous procedural wind: one looping noise source, slow smooth gusts, follows the biome; silent when an ambience file plays */
+function windBed(c,B){const t=c.currentTime;let w=AU.wind;
+ if(!w){const s=c.createBufferSource();s.buffer=AU.noise;s.loop=true;const f=c.createBiquadFilter();f.type='bandpass';f.Q.value=.6;f.frequency.value=B.windF;const g=c.createGain();g.gain.value=0;s.connect(f).connect(g).connect(AU.amb);s.start();w=AU.wind={s,f,g,next:0,lvl:0};}
+ if(t<w.next)return;w.next=t+rr(1.5,3.5);const on=!AU.cur.amb;const lvl=on?.16*rr(.55,1):0;
+ w.g.gain.setTargetAtTime(lvl,t,1.2);w.f.frequency.setTargetAtTime(B.windF*rr(.85,1.6),t,1.5);}
 function updateListener(){if(!AU.ctx)return;const l=AU.ctx.listener;camera.getWorldPosition(_v1);camera.getWorldDirection(_v2);_v3.set(0,1,0).applyQuaternion(camera.getWorldQuaternion(_q1));
  if(l.positionX){l.positionX.value=_v1.x;l.positionY.value=_v1.y;l.positionZ.value=_v1.z;l.forwardX.value=_v2.x;l.forwardY.value=_v2.y;l.forwardZ.value=_v2.z;l.upX.value=_v3.x;l.upY.value=_v3.y;l.upZ.value=_v3.z;}
  else{l.setPosition(_v1.x,_v1.y,_v1.z);l.setOrientation(_v2.x,_v2.y,_v2.z,_v3.x,_v3.y,_v3.z);}}
@@ -3132,6 +3137,7 @@ $('#b-vr').onclick=async()=>{try{const s=await navigator.xr.requestSession('imme
  else{$('#b-vr').textContent='VR not available here';$('#status').textContent+=' · WebXR needs HTTPS and a VR browser';}
 })();
 window.HM={frame,narrQ,state,player,hands,enemies,weapons,ragdolls,holsterSlots,headPos,enterHub,SAVE,W,REGIONS,travelTo,regionState,floorY,renderer,scene,camera,rig,spawnWeapon,Enemy,V3};
+Object.assign(window.HM,{AU});
 Object.assign(window.HM,{PROG,SKILLS,SPELLS,grantKillXP,grantReward,buyWeapon,rollDrop,spellKnown,spellList,openSkillPanel,closeSkillPanel,toggleSkillPanel,skillPanel,explode});
 Object.assign(window.HM,{VIL,VD,VDLG,VBUB,STORY2,SQ_AT,spawnVillagers,updateVillagers,talkTo,vDlgClick,acceptQuest,turnInQuest,qReady,qAvail,questLine,questOnKill,questOnRegion,sharpenHeld,colliders:()=>colliders,teleportRig});
 Object.assign(window.HM,{loadPanel,fadeTo,clearLoot,grantDrops,bossRefresh,hurtPlayer,tryGrab,holster,holsterSlots,CAMP,genCamps,setupCamps,updateCamps,spawnPatrol,regionRespawn,regionArrive,onPlayerDeath,toggleMap,mapPanel,menu,drawMenu,bossPanel,liveCount,roadD,REGION_AT,HUB_ID,teleportRig,clockNow:()=>clock,MQ,MAIN,mainCur,mainLine,mainComplete,mainReset,mainFlush,mainCheck,regionSealed,endPanel,showEnd,patrol:{get t(){return patrolT;},set t(v){patrolT=v;}}});
